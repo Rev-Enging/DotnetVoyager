@@ -1,7 +1,11 @@
 ﻿using DotnetVoyager.WebAPI.Dtos;
 using DotnetVoyager.WebAPI.Services;
+using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.CSharp;
 using Microsoft.AspNetCore.Mvc;
 using Mono.Cecil;
+using System.Reflection.Metadata.Ecma335;
+using System.Text;
 
 namespace DotnetVoyager.WebAPI.Controllers;
 
@@ -110,6 +114,74 @@ public class AnalysisController : ControllerBase
         catch (Exception ex)
         {
             return BadRequest($"Failed to analyze assembly: {ex.Message}");
+        }
+    }
+
+    [HttpGet("{analysisId}/code")]
+    [ProducesResponseType(typeof(DecompiledCodeDto), 200)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(400)]
+    public IActionResult GetDecompiledCode([FromRoute] string analysisId, [FromQuery] int token)
+    {
+        try
+        {
+            var targetDirectoryPath = _storageService.GetAnalysisDirectoryPath(analysisId);
+
+            if (!Directory.Exists(targetDirectoryPath))
+            {
+                return NotFound($"Analysis session with ID '{analysisId}' not found or has expired.");
+            }
+
+            var assemblyPath = Directory.GetFiles(targetDirectoryPath, "*.dll").FirstOrDefault() ??
+                               Directory.GetFiles(targetDirectoryPath, "*.exe").FirstOrDefault();
+
+            if (assemblyPath == null)
+            {
+                return NotFound($"No assembly file (.dll or .exe) found for analysis session '{analysisId}'.");
+            }
+
+            // 1. Створюємо EntityHandle безпосередньо з int-значення токена
+            var handle = MetadataTokens.EntityHandle(token);
+
+            // 2. Декомпілюємо C# код. Цей метод сам визначить, що це - клас, метод чи властивість.
+            var decompiler = new CSharpDecompiler(assemblyPath, new DecompilerSettings());
+            var csharpCode = decompiler.DecompileAsString(handle);
+
+            // 3. Отримуємо IL-код, використовуючи Mono.Cecil, як і раніше.
+            //    Ця частина була правильною і залишається корисною для диференціації.
+            string ilCode;
+            var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
+            var member = assembly.MainModule.LookupToken(token);
+
+            switch (member)
+            {
+                case MethodDefinition method when method.HasBody:
+                    var sb = new StringBuilder();
+                    foreach (var instruction in method.Body.Instructions)
+                    {
+                        sb.AppendLine(instruction.ToString());
+                    }
+                    ilCode = sb.ToString();
+                    break;
+                case MethodDefinition _:
+                    ilCode = "This method does not have a method body (e.g., it's abstract or in an interface).";
+                    break;
+                default:
+                    ilCode = "IL code is available only for methods.";
+                    break;
+            }
+
+            var response = new DecompiledCodeDto
+            {
+                CSharpCode = csharpCode,
+                IlCode = ilCode
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest($"Failed to decompile code: {ex.Message}");
         }
     }
 }

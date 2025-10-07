@@ -1,6 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudio,react,reactnative,visualstudiocode,webstorm,rider
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudio,react,reactnative,visualstudiocode,webstorm,rider
 
+###uploads###
+/uploads
+/assembly-uploads
+
 ### react ###
 .DS_*
 *.log
