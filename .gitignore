@@ -3,7 +3,9 @@
 
 ###uploads###
 /uploads
-/assembly-uploads
+/temp-assembly-uploads
+uploads/
+temp-assembly-uploads/
 
 ### react ###
 .DS_*
