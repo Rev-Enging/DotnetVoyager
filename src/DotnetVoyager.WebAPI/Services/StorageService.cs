@@ -1,4 +1,5 @@
 ﻿using DotnetVoyager.WebAPI.Configuration;
+using DotnetVoyager.WebAPI.Constants;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 
@@ -7,21 +8,40 @@ namespace DotnetVoyager.WebAPI.Services;
 public interface IStorageService
 {
     /// <summary>
-    /// Отримує повний шлях до папки для конкретної сесії аналізу.
+    /// Отримує шлях до папки аналізу.
     /// </summary>
     string GetAnalysisDirectoryPath(string analysisId);
 
     /// <summary>
-    /// Асинхронно зберігає файли в папку для конкретної сесії аналізу.
+    /// Зберігає завантажений файл збірки.
     /// </summary>
-    /// <returns>Повний шлях до створеної папки.</returns>
-    Task<string> SaveAnalysisFilesAsync(List<IFormFile> files, string analysisId);
+    Task SaveAssemblyFileAsync(IFormFile file, string analysisId);
+
+    // === Робота з результатами аналізу ===
+
+    /// <summary>
+    /// Зберігає серіалізоване дерево структури збірки у JSON-файл.
+    /// </summary>
+    Task SaveTreeAsync(AssemblyNodeDto node, string analysisId);
+
+    /// <summary>
+    /// Зчитує та десеріалізує дерево структури збірки з JSON-файлу.
+    /// Повертає null, якщо файл не знайдено.
+    /// </summary>
+    Task<AssemblyNodeDto?> ReadTreeAsync(string analysisId);
+
+    // === Управління життєвим циклом ===
+
+    /// <summary>
+    /// Повністю видаляє папку з усіма файлами аналізу.
+    /// </summary>
+    Task DeleteAnalysisAsync(string analysisId);
 }
 
 public class StorageService : IStorageService
 {
     private readonly StorageOptions _options;
-    private readonly string _contentRootPath; // Будемо використовувати ContentRootPath для відносних шляхів
+    private readonly string _contentRootPath;
 
     public StorageService(IOptions<StorageOptions> options, IWebHostEnvironment webHostEnvironment)
     {
@@ -29,64 +49,79 @@ public class StorageService : IStorageService
         _contentRootPath = webHostEnvironment.ContentRootPath;
     }
 
+    // Метод тепер значно простіший
     public string GetAnalysisDirectoryPath(string analysisId)
     {
-        string basePath = _options.Type switch
-        {
-            // Для WwwRoot ми все ще використовуємо WebRootPath
-            StorageType.WwwRoot => Path.Combine(Path.Combine(_contentRootPath, "wwwroot"), "uploads"),
+        // 1. Отримуємо базовий шлях з налаштувань.
+        var basePath = _options.Path;
 
-            StorageType.Custom => GetCustomBasePath(),
+        // 2. Якщо шлях відносний (напр., "AnalysisTemp"), поєднуємо його з коренем проєкту.
+        // Якщо абсолютний (напр., "C:\\Uploads"), використовуємо як є.
+        var absoluteBasePath = Path.IsPathRooted(basePath)
+            ? basePath
+            : Path.Combine(_contentRootPath, basePath);
 
-            StorageType.Temp => Path.Combine(Path.GetTempPath(), "DotnetVoyager"),
-
-            _ => throw new InvalidOperationException("Invalid StorageType configured.")
-        };
-
-        return Path.Combine(basePath, analysisId);
+        // 3. Додаємо унікальний ID аналізу
+        return Path.Combine(absoluteBasePath, analysisId);
     }
 
-    public async Task<string> SaveAnalysisFilesAsync(List<IFormFile> files, string analysisId)
+    // Я трохи спростив метод, оскільки ми аналізуємо лише один файл за раз
+    public async Task SaveAnalysisFilesAsync(IFormFile file, string analysisId)
     {
-        // 1. Отримуємо шлях до папки, де будуть зберігатися файли
+        // 1. Отримуємо фінальний шлях до папки.
         var targetDirectoryPath = GetAnalysisDirectoryPath(analysisId);
 
-        // 2. Створюємо папку
+        // 2. Створюємо папку, якщо її ще немає.
         Directory.CreateDirectory(targetDirectoryPath);
 
-        // 3. Зберігаємо файли (логіка переїхала сюди з контролера)
-        foreach (var file in files)
+        // 3. Зберігаємо файл.
+        var filePath = Path.Combine(targetDirectoryPath, file.FileName);
+        await using (var stream = new FileStream(filePath, FileMode.Create))
         {
-            if (file.Length > 0)
-            {
-                var filePath = Path.Combine(targetDirectoryPath, file.FileName);
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await file.CopyToAsync(stream);
-                }
-            }
+            await file.CopyToAsync(stream);
         }
-
-        return targetDirectoryPath;
     }
 
-    // Приватний метод для обробки логіки CustomPath
-    private string GetCustomBasePath()
+    public async Task SaveTreeAsync(AssemblyNodeDto node, string analysisId)
     {
-        var customPath = _options.CustomPath;
+        // 1. Отримуємо шлях до папки
+        var directoryPath = GetAnalysisDirectoryPath(analysisId);
+        // 2. Формуємо повний шлях до JSON-файлу, використовуючи константу
+        var filePath = Path.Combine(directoryPath, ProjectConstants.NamespaceTreeStructureFileName);
 
-        if (string.IsNullOrEmpty(customPath))
+        // 3. Асинхронно серіалізуємо об'єкт і записуємо у файл
+        await using var fileStream = new FileStream(filePath, FileMode.Create);
+        await System.Text.Json.JsonSerializer.SerializeAsync(fileStream, node);
+    }
+
+    public async Task<AssemblyNodeDto?> ReadTreeAsync(string analysisId)
+    {
+        var filePath = Path.Combine(GetAnalysisDirectoryPath(analysisId), ProjectConstants.NamespaceTreeStructureFileName);
+
+        // ✅ Обробка ситуації, коли файл не існує
+        if (!File.Exists(filePath))
         {
-            throw new InvalidOperationException("CustomPath must be configured when StorageType is Custom.");
+            return null;
         }
 
-        // Перевіряємо, чи шлях абсолютний (наприклад, "C:\uploads" або "/var/uploads")
-        if (Path.IsPathRooted(customPath))
+        await using var fileStream = new FileStream(filePath, FileMode.Open);
+        // Десеріалізуємо JSON назад в об'єкт
+        return await System.Text.Json.JsonSerializer.DeserializeAsync<AssemblyNodeDto>(fileStream);
+    }
+
+    public Task DeleteAnalysisAsync(string analysisId)
+    {
+        var directoryPath = GetAnalysisDirectoryPath(analysisId);
+
+        // ✅ Обробка ситуації, коли папка не існує
+        if (Directory.Exists(directoryPath))
         {
-            return customPath;
+            // Видаляємо папку рекурсивно з усім вмістом
+            Directory.Delete(directoryPath, recursive: true);
         }
 
-        // Якщо шлях відносний (наприклад, "MyUploads"), поєднуємо його з кореневою папкою проєкту
-        return Path.Combine(_contentRootPath, customPath);
+        // Оскільки Directory.Delete - синхронна операція,
+        // повертаємо завершене завдання, щоб відповідати інтерфейсу.
+        return Task.CompletedTask;
     }
 }
