@@ -1,12 +1,10 @@
-﻿using DotnetVoyager.WebAPI.Dtos;
-using DotnetVoyager.WebAPI.Services;
-using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.CSharp;
-using ICSharpCode.Decompiler.Metadata;
+﻿using DotnetVoyager.BLL.Constants;
+using DotnetVoyager.BLL.Dtos;
+using DotnetVoyager.BLL.Errors;
+using DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
+using DotnetVoyager.WebAPI.Dtos;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Mono.Cecil;
-using System.Reflection.Metadata.Ecma335;
-using System.Text;
 
 namespace DotnetVoyager.WebAPI.Controllers;
 
@@ -14,45 +12,65 @@ namespace DotnetVoyager.WebAPI.Controllers;
 [Route("api/[controller]")]
 public class AnalysisController : ControllerBase
 {
-    private readonly IStorageService _storageService;
-    private readonly IMetadataService _metadataService;
-    private readonly IDependencyAnalyzerService _dependencyAnalyzer;
+    private readonly IMediator _mediator;
+    private readonly ILogger<AnalysisController> _logger;
 
     public AnalysisController(
-        IStorageService storageService,
-        IMetadataService metadataService,
-        IDependencyAnalyzerService dependencyAnalyzer)
+        IMediator mediator,
+        ILogger<AnalysisController> logger)
     {
-        _storageService = storageService;
-        _dependencyAnalyzer = dependencyAnalyzer;
-        _metadataService = metadataService;
+        _logger = logger;
+        _mediator = mediator;
     }
 
     [HttpPost("upload")]
-    [ProducesResponseType(typeof(UploadResponseDto), 200)]
-    [ProducesResponseType(400)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 5 * 1024 * 1024)]
-    public async Task<IActionResult> Upload([FromForm] List<IFormFile> files)
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(UploadAssemblyResultDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ProjectConstants.MaxAssemblySizeInBytes)]
+    public async Task<IActionResult> Upload([FromForm] UploadAssemblyRequestDto request)
     {
-        if (files == null || files.Count == 0)
+        var bllDto = request.ToBllDto();
+
+        var result = await _mediator.Send(new UploadAssemblyCommand(bllDto));
+
+        if (result.IsSuccess)
         {
-            return BadRequest("No files were uploaded.");
+            return Accepted(result.Value);
         }
 
-        var analysisId = Guid.NewGuid().ToString();
-
-        // Вся складна логіка тепер в одному виклику!
-        await _storageService.SaveAnalysisFilesAsync(files, analysisId);
-
-        var response = new UploadResponseDto
+        if (result.HasError<ValidationError>())
         {
-            AnalysisId = analysisId
-        };
+            var validationError = result.Errors.OfType<ValidationError>().First();
+            return HandleValidationError(validationError);
+        }
 
-        return Ok(response);
+        return Problem(
+            detail: "An unexpected error occurred.",
+            statusCode: StatusCodes.Status500InternalServerError
+        );
     }
 
-    [HttpGet("{analysisId}/structure")]
+    private IActionResult HandleValidationError(ValidationError validationError)
+    {
+        var errors = validationError.ValidationResult.Errors
+            .GroupBy(e => e.PropertyName)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(e => e.ErrorMessage).ToArray()
+            );
+
+        return ValidationProblem(new ValidationProblemDetails(errors));
+    }
+}
+
+
+
+
+
+
+/*    [HttpGet("{analysisId}/structure")]
     [ProducesResponseType(typeof(List<StructureNodeDto>), 200)]
     [ProducesResponseType(404)]
     [ProducesResponseType(400)]
@@ -124,8 +142,8 @@ public class AnalysisController : ControllerBase
         {
             return BadRequest($"Failed to analyze assembly: {ex.Message}");
         }
-    }
-
+    }*/
+/*
     [HttpGet("{analysisId}/code")]
     [ProducesResponseType(typeof(DecompiledCodeDto), 200)]
     [ProducesResponseType(404)]
@@ -244,9 +262,19 @@ public class AnalysisController : ControllerBase
         {
             return BadRequest($"Failed to analyze dependencies: {ex.Message}");
         }
-    }
+    }*/
 
-    [HttpGet("{analysisId}/details")]
+
+
+
+
+
+
+
+    // NOTTHIS!!!!
+    // !!!!
+    // !!!!
+    /*[HttpGet("{analysisId}/details")]
     [ProducesResponseType(typeof(AssemblyDetailsDto), 200)]
     [ProducesResponseType(404)]
     [ProducesResponseType(400)]
@@ -270,8 +298,12 @@ public class AnalysisController : ControllerBase
             return BadRequest($"Failed to get assembly details: {ex.Message}");
         }
     }
+*/
 
-    private bool TryGetPrimaryAssemblyPath(string analysisId, out string? assemblyPath, out IActionResult errorResult)
+
+
+
+/*    private bool TryGetPrimaryAssemblyPath(string analysisId, out string? assemblyPath, out IActionResult errorResult)
     {
         var targetDirectoryPath = _storageService.GetAnalysisDirectoryPath(analysisId);
         if (!Directory.Exists(targetDirectoryPath))
@@ -294,7 +326,7 @@ public class AnalysisController : ControllerBase
         return true;
     }
 }
-
+*/
 
 /*    [HttpGet("{analysisId}/code")]
     [ProducesResponseType(typeof(DecompiledCodeDto), 200)]

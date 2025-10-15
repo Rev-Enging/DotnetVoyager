@@ -1,8 +1,9 @@
-using DotnetVoyager.WebAPI.Configuration;
-using DotnetVoyager.WebAPI.Constants;
-using DotnetVoyager.WebAPI.Services;
-using DotnetVoyager.WebAPI.Settings;
-using DotnetVoyager.WebAPI.Workers;
+using DotnetVoyager.BLL;
+using DotnetVoyager.BLL.Constants;
+using DotnetVoyager.BLL.Options;
+using DotnetVoyager.BLL.Services;
+using DotnetVoyager.BLL.Workers;
+using FluentValidation;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,11 +18,30 @@ builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(Project
 // Configure services
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<IDependencyAnalyzerService, DependencyAnalyzerService>();
-builder.Services.AddScoped<IMetadataService, MetadataService>();
+builder.Services.AddScoped<IMetadataReaderService, MetadataReaderService>();
+builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+builder.Services.AddScoped<IAssemblyValidator, AssemblyValidator>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+
+// Add FluentValidation
+builder.Services.AddValidatorsFromAssemblyContaining<BllAssemblyMarker>();
 
 // Configure background services
 builder.Services.AddHostedService<QueuedHostedService>();
+
+// Configure logging
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.IncludeScopes = true;
+    options.TimestampFormat = "HH:mm:ss ";
+    options.UseUtcTimestamp = false;
+});
+
+// Configure MediatR
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(BllAssemblyMarker).Assembly);
+});
 
 // Configure swagger
 if (builder.Environment.IsDevelopment())
@@ -29,6 +49,7 @@ if (builder.Environment.IsDevelopment())
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
 }
+
 
 // Configure CORS
 var corsOptions = builder.Configuration.GetSection(ProjectConstants.CorsOptionsSectionName).Get<CorsOptions>();

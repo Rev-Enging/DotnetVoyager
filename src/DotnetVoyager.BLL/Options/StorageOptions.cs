@@ -1,6 +1,6 @@
-﻿using DotnetVoyager.WebAPI.Constants;
+﻿using DotnetVoyager.BLL.Constants;
 
-namespace DotnetVoyager.WebAPI.Configuration;
+namespace DotnetVoyager.BLL.Options;
 
 public class StorageOptions
 {

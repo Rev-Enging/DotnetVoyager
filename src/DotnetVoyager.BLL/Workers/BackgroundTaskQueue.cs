@@ -1,15 +1,11 @@
-﻿using DotnetVoyager.WebAPI.Models;
+﻿using DotnetVoyager.BLL.Models;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 
-namespace DotnetVoyager.WebAPI.Workers;
+namespace DotnetVoyager.BLL.Workers;
 
 public interface IBackgroundTaskQueue
 {
-    // Enqueues a task to be processed.
     ValueTask EnqueueAsync(AnalysisTask task);
-
-    // Dequeues a task for processing.
     ValueTask<AnalysisTask> DequeueAsync(CancellationToken cancellationToken);
 }
 

@@ -1,7 +1,7 @@
 ﻿using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 
-namespace DotnetVoyager.WebAPI.Services;
+namespace DotnetVoyager.BLL.Services;
 
 public class DependencyGraphDto
 {

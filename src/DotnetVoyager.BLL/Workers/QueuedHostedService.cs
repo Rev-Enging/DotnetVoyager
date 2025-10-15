@@ -1,18 +1,21 @@
-﻿using System.Runtime;
+﻿using DotnetVoyager.BLL.Options;
+using DotnetVoyager.BLL.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
-namespace DotnetVoyager.WebAPI.Workers;
+namespace DotnetVoyager.BLL.Workers;
 
 public class QueuedHostedService : BackgroundService
 {
     private readonly ILogger<QueuedHostedService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IBackgroundTaskQueue _taskQueue;
-
-    // Define the number of concurrent workers (slots).
-    // Let's make this configurable later.
-    private const int MaxConcurrentWorkers = 5;
+    private readonly WorkerOptions _workerOptions;
 
     public QueuedHostedService(
+        IOptions<WorkerOptions> workerOptions,
         ILogger<QueuedHostedService> logger,
         IServiceProvider serviceProvider,
         IBackgroundTaskQueue taskQueue)
@@ -20,25 +23,22 @@ public class QueuedHostedService : BackgroundService
         _logger = logger;
         _serviceProvider = serviceProvider;
         _taskQueue = taskQueue;
+        _workerOptions = workerOptions.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation(
-            "Queued Hosted Service is running with {WorkerCount} concurrent workers.", MaxConcurrentWorkers);
+        var concurentWorkers = _workerOptions.AnalysisConcurrentWorkers;
 
-        // Create a list to hold all our worker tasks.
+        _logger.LogInformation("Queued Hosted Service is running with {WorkerCount} concurrent workers.", concurentWorkers);
+
         var workerTasks = new List<Task>();
 
-        // Start N workers.
-        for (int i = 0; i < MaxConcurrentWorkers; i++)
+        for (int i = 0; i < concurentWorkers; i++)
         {
-            // Each worker is a separate Task that runs the ProcessQueueAsync method.
             workerTasks.Add(ProcessQueueAsync(stoppingToken));
         }
 
-        // Wait for all worker tasks to complete.
-        // This will happen when the application is shutting down.
         await Task.WhenAll(workerTasks);
 
         _logger.LogInformation("Queued Hosted Service is stopping.");
@@ -48,9 +48,8 @@ public class QueuedHostedService : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(_settings.AnalysisTimeoutMinutes));
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(_workerOptions.AnalysisTimeoutMinutes));
 
-            // ✅ Create a new, LINKED token source.
             // It will be cancelled if EITHER the original stoppingToken OR the timeoutCts token is cancelled.
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, timeoutCts.Token);
 
@@ -59,19 +58,29 @@ public class QueuedHostedService : BackgroundService
 
             try
             {
-                // Each worker independently dequeues a task from the shared queue.
-                // The queue itself is thread-safe, so they won't interfere with each other.
                 var task = await _taskQueue.DequeueAsync(linkedToken);
 
-                // Create a new dependency injection scope for each task processing.
-                // This is CRUCIAL for concurrency to prevent issues with shared services (like DbContext).
                 using (var scope = _serviceProvider.CreateScope())
                 {
-                    var analysisService = scope.ServiceProvider.GetRequiredService<IAssemblyAnalysisService>();
                     _logger.LogInformation("Worker is processing task for Analysis ID: {AnalysisId}", task.AnalysisId);
+                    
+                    var storageService = scope.ServiceProvider.GetRequiredService<IStorageService>();
+                    var metadataService = scope.ServiceProvider.GetRequiredService<IMetadataReaderService>();
+                    var statisticService = scope.ServiceProvider.GetRequiredService<IStatisticsService>();
 
-                    // The actual work is performed here.
-                    await analysisService.PerformAnalysisAsync(task);
+                    var assemblyPath = await storageService.FindAssemblyFilePathAsync(task.AnalysisId);
+
+                    if (assemblyPath == null)
+                    {
+                        _logger.LogWarning("No assembly file found for Analysis ID: {AnalysisId}. Skipping task.", task.AnalysisId);
+                        continue;
+                    }
+
+                    var metadata = await metadataService.GetAssemblyMetadataAsync(assemblyPath, linkedToken);
+                    _logger.LogInformation("Extracted metadata for Analysis ID: {AnalysisId}", task.AnalysisId);
+                    
+                    await storageService.SaveDataAsync(task.AnalysisId, metadata, "metadata.json", linkedToken);
+                    _logger.LogInformation("Saved metadata for Analysis ID: {AnalysisId}", task.AnalysisId);
                 }
             }
             catch (OperationCanceledException)

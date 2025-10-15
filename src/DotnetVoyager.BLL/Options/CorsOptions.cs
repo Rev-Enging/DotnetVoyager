@@ -1,4 +1,4 @@
-﻿namespace DotnetVoyager.WebAPI.Settings;
+﻿namespace DotnetVoyager.BLL.Options;
 
 public class CorsOptions
 {
