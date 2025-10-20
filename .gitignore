@@ -6,6 +6,9 @@
 /temp-assembly-uploads
 uploads/
 temp-assembly-uploads/
+AnalysisTemp/
+AnalysisTemp
+/AnalysisTemp
 
 ### react ###
 .DS_*

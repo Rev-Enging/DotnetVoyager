@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="AnalysisTemp\" />
     <Folder Include="wwwroot\" />
   </ItemGroup>
 

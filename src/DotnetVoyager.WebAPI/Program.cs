@@ -21,6 +21,9 @@ builder.Services.AddScoped<IDependencyAnalyzerService, DependencyAnalyzerService
 builder.Services.AddScoped<IMetadataReaderService, MetadataReaderService>();
 builder.Services.AddScoped<IStatisticsService, StatisticsService>();
 builder.Services.AddScoped<IAssemblyValidator, AssemblyValidator>();
+builder.Services.AddScoped<IAnalysisStatusService, AnalysisStatusService>();
+builder.Services.AddScoped<IStructureAnalyzerService, StructureAnalyzerService>();
+builder.Services.AddScoped<ICodeDecompilationService, CodeDecompilationService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 
 // Add FluentValidation

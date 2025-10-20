@@ -2,7 +2,11 @@
 using DotnetVoyager.BLL.Dtos;
 using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
+using DotnetVoyager.BLL.MediatR.Queries.GetDecompiledCode;
+using DotnetVoyager.BLL.MediatR.Queries.GetStatus;
+using DotnetVoyager.BLL.MediatR.Queries.GetStructure;
 using DotnetVoyager.WebAPI.Dtos;
+using DotnetVoyager.WebAPI.Exensions;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
@@ -29,11 +33,11 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     [RequestFormLimits(MultipartBodyLengthLimit = ProjectConstants.MaxAssemblySizeInBytes)]
-    public async Task<IActionResult> Upload([FromForm] UploadAssemblyRequestDto request)
+    public async Task<IActionResult> Upload([FromForm] UploadAssemblyRequestDto request, CancellationToken cancellationToken)
     {
         var bllDto = request.ToBllDto();
 
-        var result = await _mediator.Send(new UploadAssemblyCommand(bllDto));
+        var result = await _mediator.Send(new UploadAssemblyCommand(bllDto), cancellationToken);
 
         if (result.IsSuccess)
         {
@@ -42,13 +46,108 @@ public class AnalysisController : ControllerBase
 
         if (result.HasError<ValidationError>())
         {
-            var validationError = result.Errors.OfType<ValidationError>().First();
+            var validationError = result.GetError<ValidationError>()!;
             return HandleValidationError(validationError);
         }
 
+        _logger.LogError("Unexpected error during assembly upload: {Errors}", result.Errors.Select(e => e.Message));
         return Problem(
-            detail: "An unexpected error occurred.",
+            detail: "An unexpected error occurred during upload.",
             statusCode: StatusCodes.Status500InternalServerError
+        );
+    }
+
+    [HttpGet("{analysisId}/status")]
+    [ProducesResponseType(typeof(AnalysisStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetStatus(string analysisId, CancellationToken cancellationToken)
+    {
+        var query = new GetStatusQuery(analysisId);
+        var result = await _mediator.Send(query, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+        
+        if (result.HasError<NotFoundError>())
+        {
+            return Problem(
+                detail: result.GetError<NotFoundError>()!.Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        _logger.LogWarning("Failed to get status for {AnalysisId}: {Errors}", analysisId, result.Errors.Select(e => e.Message));
+        return Problem(
+            detail: "An unexpected error occured during status query",
+            statusCode: StatusCodes.Status400BadRequest
+        );
+    }
+
+    [HttpGet("{analysisId}/structure")]
+    [ProducesResponseType(typeof(StructureNodeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetStructure(string analysisId, CancellationToken cancellationToken)
+    {
+        var query = new GetStructureQuery(analysisId);
+        var result = await _mediator.Send(query, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+
+        if (result.HasError<NotFoundError>())
+        {
+            return Problem(
+                detail: result.GetError<NotFoundError>()!.Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        if (result.HasError<AnalysisNotCompletedError>())
+        {
+            return Problem(
+                detail: result.GetError<AnalysisNotCompletedError>()!.Message,
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        _logger.LogWarning("Bad request for GetStructure {AnalysisId}: {Errors}", analysisId, result.Errors.Select(e => e.Message));
+        return Problem(
+            detail: "Unexpected error occured during structure query",
+            statusCode: StatusCodes.Status400BadRequest
+        );
+    }
+
+    [HttpGet("{analysisId}/decompile/{lookupToken:int}")]
+    [ProducesResponseType(typeof(DecompiledCodeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetDecompiledCode(string analysisId, int lookupToken, CancellationToken cancellationToken)
+    {
+        var query = new GetDecompiledCodeQuery(analysisId, lookupToken);
+        var result = await _mediator.Send(query, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+
+        if (result.HasError<NotFoundError>())
+        {
+            return Problem(
+                detail: result.GetError<NotFoundError>()!.Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        return Problem(
+            detail: "Unexpected error occured during decompile query",
+            statusCode: StatusCodes.Status400BadRequest
         );
     }
 
@@ -67,170 +166,8 @@ public class AnalysisController : ControllerBase
 
 
 
-
-
-
-/*    [HttpGet("{analysisId}/structure")]
-    [ProducesResponseType(typeof(List<StructureNodeDto>), 200)]
-    [ProducesResponseType(404)]
-    [ProducesResponseType(400)]
-    public IActionResult GetStructure([FromRoute] string analysisId)
-    {
-        try
-        {
-            var targetDirectoryPath = _storageService.GetAnalysisDirectoryPath(analysisId);
-
-            if (!Directory.Exists(targetDirectoryPath))
-            {
-                return NotFound($"Analysis session with ID '{analysisId}' not found or has expired.");
-            }
-
-            var assemblyPath = Directory.GetFiles(targetDirectoryPath, "*.dll").FirstOrDefault() ??
-                               Directory.GetFiles(targetDirectoryPath, "*.exe").FirstOrDefault();
-
-            if (assemblyPath == null)
-            {
-                return NotFound($"No assembly file (.dll or .exe) found for analysis session '{analysisId}'.");
-            }
-
-            var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
-
-            var structure = new List<StructureNodeDto>();
-
-            var namespaceGroups = assembly.MainModule.Types
-                .Where(t => t.IsPublic)
-                .GroupBy(t => t.Namespace);
-
-            foreach (var group in namespaceGroups)
-            {
-                var namespaceNode = new StructureNodeDto
-                {
-                    Name = group.Key ?? "[No Namespace]",
-                    Type = "namespace",
-                    Children = new List<StructureNodeDto>()
-                };
-
-                foreach (var type in group)
-                {
-                    var classNode = new StructureNodeDto
-                    {
-                        Name = type.Name,
-                        Type = type.IsClass ? "class" : "interface",
-                        Token = type.MetadataToken.ToInt32(),
-                        Children = new List<StructureNodeDto>()
-                    };
-
-                    foreach (var method in type.Methods.Where(m => m.IsPublic && !m.IsConstructor))
-                    {
-                        classNode.Children.Add(new StructureNodeDto
-                        {
-                            Name = method.Name,
-                            Type = "method",
-                            Token = method.MetadataToken.ToInt32()
-                        });
-                    }
-
-                    namespaceNode.Children.Add(classNode);
-                }
-
-                structure.Add(namespaceNode);
-            }
-
-            return Ok(structure);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest($"Failed to analyze assembly: {ex.Message}");
-        }
-    }*/
 /*
-    [HttpGet("{analysisId}/code")]
-    [ProducesResponseType(typeof(DecompiledCodeDto), 200)]
-    [ProducesResponseType(404)]
-    [ProducesResponseType(400)]
-    public IActionResult GetDecompiledCode([FromRoute] string analysisId, [FromQuery] int token)
-    {
-        try
-        {
-            var targetDirectoryPath = _storageService.GetAnalysisDirectoryPath(analysisId);
-            if (!Directory.Exists(targetDirectoryPath))
-            {
-                return NotFound($"Analysis session with ID '{analysisId}' not found or has expired.");
-            }
-
-            var assemblyPath = Directory.GetFiles(targetDirectoryPath, "*.dll").FirstOrDefault() ??
-                               Directory.GetFiles(targetDirectoryPath, "*.exe").FirstOrDefault();
-
-            if (assemblyPath == null)
-            {
-                return NotFound($"No assembly file (.dll or .exe) found for analysis session '{analysisId}'.");
-            }
-
-            var handle = MetadataTokens.EntityHandle(token);
-
-            // Налаштовуємо resolver для роботи без залежностей
-            var resolver = new UniversalAssemblyResolver(
-                assemblyPath,
-                throwOnError: false,  // Не кидати виняток при відсутності залежностей
-                targetFramework: null
-            );
-
-            // Додаємо директорію з поточною збіркою
-            resolver.AddSearchDirectory(Path.GetDirectoryName(assemblyPath));
-
-            // Налаштовуємо DecompilerSettings
-            var settings = new DecompilerSettings
-            {
-                ThrowOnAssemblyResolveErrors = false  // Не падати при помилках резолвінгу
-            };
-
-            // Створюємо декомпілятор з налаштованим resolver
-            var decompiler = new CSharpDecompiler(assemblyPath, resolver, settings);
-
-            var csharpCode = decompiler.DecompileAsString(handle);
-
-            // IL-код через Mono.Cecil
-            string ilCode;
-            var readerParameters = new ReaderParameters
-            {
-                AssemblyResolver = new DefaultAssemblyResolver() // Cecil теж потребує resolver
-            };
-
-            var assembly = AssemblyDefinition.ReadAssembly(assemblyPath, readerParameters);
-            var member = assembly.MainModule.LookupToken(token);
-
-            switch (member)
-            {
-                case MethodDefinition method when method.HasBody:
-                    var sb = new StringBuilder();
-                    foreach (var instruction in method.Body.Instructions)
-                    {
-                        sb.AppendLine(instruction.ToString());
-                    }
-                    ilCode = sb.ToString();
-                    break;
-                case MethodDefinition _:
-                    ilCode = "This method does not have a method body (e.g., it's abstract or in an interface).";
-                    break;
-                default:
-                    ilCode = "IL code is available only for methods.";
-                    break;
-            }
-
-            var response = new DecompiledCodeDto
-            {
-                CSharpCode = csharpCode,
-                IlCode = ilCode
-            };
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest($"Failed to decompile code: {ex.Message}");
-        }
-    }
-
+    
     [HttpGet("{analysisId}/dependencies")]
     [ProducesResponseType(typeof(DependencyGraphDto), 200)]
     [ProducesResponseType(404)]
@@ -264,134 +201,3 @@ public class AnalysisController : ControllerBase
         }
     }*/
 
-
-
-
-
-
-
-
-    // NOTTHIS!!!!
-    // !!!!
-    // !!!!
-    /*[HttpGet("{analysisId}/details")]
-    [ProducesResponseType(typeof(AssemblyDetailsDto), 200)]
-    [ProducesResponseType(404)]
-    [ProducesResponseType(400)]
-    public IActionResult GetAssemblyDetails([FromRoute] string analysisId)
-    {
-        // Використовуємо допоміжний метод, щоб уникнути дублювання коду
-        if (!TryGetPrimaryAssemblyPath(analysisId, out var assemblyPath, out var errorResult))
-        {
-            return errorResult;
-        }
-
-        try
-        {
-            // Кожен раз викликаємо сервіс для обчислення даних
-            var details = _metadataService.GetAssemblyDetails(assemblyPath!);
-            return Ok(details);
-        }
-        catch (Exception ex)
-        {
-            // It's a good practice to log the exception here
-            return BadRequest($"Failed to get assembly details: {ex.Message}");
-        }
-    }
-*/
-
-
-
-
-/*    private bool TryGetPrimaryAssemblyPath(string analysisId, out string? assemblyPath, out IActionResult errorResult)
-    {
-        var targetDirectoryPath = _storageService.GetAnalysisDirectoryPath(analysisId);
-        if (!Directory.Exists(targetDirectoryPath))
-        {
-            errorResult = NotFound($"Analysis session with ID '{analysisId}' not found or has expired.");
-            assemblyPath = null;
-            return false;
-        }
-
-        assemblyPath = Directory.GetFiles(targetDirectoryPath, "*.dll").FirstOrDefault() ??
-                       Directory.GetFiles(targetDirectoryPath, "*.exe").FirstOrDefault();
-
-        if (assemblyPath == null)
-        {
-            errorResult = NotFound($"No assembly file (.dll or .exe) found for analysis session '{analysisId}'.");
-            return false;
-        }
-
-        errorResult = null!;
-        return true;
-    }
-}
-*/
-
-/*    [HttpGet("{analysisId}/code")]
-    [ProducesResponseType(typeof(DecompiledCodeDto), 200)]
-    [ProducesResponseType(404)]
-    [ProducesResponseType(400)]
-    public IActionResult GetDecompiledCode([FromRoute] string analysisId, [FromQuery] int token)
-    {
-        try
-        {
-            var targetDirectoryPath = _storageService.GetAnalysisDirectoryPath(analysisId);
-
-            if (!Directory.Exists(targetDirectoryPath))
-            {
-                return NotFound($"Analysis session with ID '{analysisId}' not found or has expired.");
-            }
-
-            var assemblyPath = Directory.GetFiles(targetDirectoryPath, "*.dll").FirstOrDefault() ??
-                               Directory.GetFiles(targetDirectoryPath, "*.exe").FirstOrDefault();
-
-            if (assemblyPath == null)
-            {
-                return NotFound($"No assembly file (.dll or .exe) found for analysis session '{analysisId}'.");
-            }
-
-            // 1. Створюємо EntityHandle безпосередньо з int-значення токена
-            var handle = MetadataTokens.EntityHandle(token);
-
-            // 2. Декомпілюємо C# код. Цей метод сам визначить, що це - клас, метод чи властивість.
-            var decompiler = new CSharpDecompiler(assemblyPath, new DecompilerSettings());
-            var csharpCode = decompiler.DecompileAsString(handle);
-
-            // 3. Отримуємо IL-код, використовуючи Mono.Cecil, як і раніше.
-            //    Ця частина була правильною і залишається корисною для диференціації.
-            string ilCode;
-            var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
-            var member = assembly.MainModule.LookupToken(token);
-
-            switch (member)
-            {
-                case MethodDefinition method when method.HasBody:
-                    var sb = new StringBuilder();
-                    foreach (var instruction in method.Body.Instructions)
-                    {
-                        sb.AppendLine(instruction.ToString());
-                    }
-                    ilCode = sb.ToString();
-                    break;
-                case MethodDefinition _:
-                    ilCode = "This method does not have a method body (e.g., it's abstract or in an interface).";
-                    break;
-                default:
-                    ilCode = "IL code is available only for methods.";
-                    break;
-            }
-
-            var response = new DecompiledCodeDto
-            {
-                CSharpCode = csharpCode,
-                IlCode = ilCode
-            };
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest($"Failed to decompile code: {ex.Message}");
-        }
-    }*/

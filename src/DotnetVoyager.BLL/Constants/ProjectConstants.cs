@@ -10,10 +10,14 @@ public static class ProjectConstants
     public static readonly string StorageSettingsSectionName = "StorageOptions";
     public static readonly string DefaultAnalysisStoragePath = "AnalysisFiles";
     public static readonly int DefaultFileLifetimeMinutes = 60;
+    public static readonly int DefaultCleanupIntervalMinutes = 60;
 
     public static readonly string WorkerSettingsSectionName = "WorkerSettings";
     public static readonly int DefaultAnalysisConcurrentWorkers = 5;
     public static readonly int DefaultAnalysisTimeoutMinutes = 10;
 
-    public static readonly string NamespaceTreeStructureFileName = "namespace-tree.json";
+    public static readonly string AnalysisStatusFileName = "status.json";
+    public static readonly string AnalysisMetadataFileName = "metadata.json";
+    public static readonly string AnalysisStatisticsFileName = "statistics.json";
+    public static readonly string AnalysisNamespaceStructureFileName = "namespace-tree.json";
 }
