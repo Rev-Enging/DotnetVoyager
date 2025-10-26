@@ -3,18 +3,18 @@ using System.Threading.Channels;
 
 namespace DotnetVoyager.BLL.Workers;
 
-public interface IBackgroundTaskQueue
+public interface IAnalysisTaskQueue
 {
     ValueTask EnqueueAsync(AnalysisTask task);
     ValueTask<AnalysisTask> DequeueAsync(CancellationToken cancellationToken);
 }
 
 
-public class BackgroundTaskQueue : IBackgroundTaskQueue
+public class AnalysisTaskQueue : IAnalysisTaskQueue
 {
     private readonly Channel<AnalysisTask> _queue;
 
-    public BackgroundTaskQueue()
+    public AnalysisTaskQueue()
     {
         // A Channel is a thread-safe data structure perfect for producer-consumer scenarios.
         // Unbounded means it can grow as needed. For production, you might consider a Bounded channel

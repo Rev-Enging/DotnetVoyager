@@ -1,5 +1,4 @@
 ﻿using DotnetVoyager.BLL.Dtos;
-using DotnetVoyager.BLL.Enums;
 using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Services;
@@ -14,14 +13,14 @@ namespace DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
 public class UploadAssemblyHandler : IRequestHandler<UploadAssemblyCommand, Result<UploadAssemblyResultDto>>
 {
     private readonly IStorageService _storageService;
-    private readonly IBackgroundTaskQueue _backgroundTaskQueue;
+    private readonly IAnalysisTaskQueue _backgroundTaskQueue;
     private readonly ILogger<UploadAssemblyHandler> _logger;
     private readonly IValidator<UploadAssemblyDto> _uploadRequestValidator;
     private readonly IAnalysisStatusService _analysisStatusService;
 
     public UploadAssemblyHandler(
         IStorageService storageService,
-        IBackgroundTaskQueue backgroundTaskQueue,
+        IAnalysisTaskQueue backgroundTaskQueue,
         IValidator<UploadAssemblyDto> uploadRequestValidator,
         ILogger<UploadAssemblyHandler> logger,
         IAnalysisStatusService analysisStatusService)
@@ -45,15 +44,12 @@ public class UploadAssemblyHandler : IRequestHandler<UploadAssemblyCommand, Resu
         var file = request.uploadDto.File!;
         var analysisId = Guid.NewGuid().ToString();
 
-        // Save assembly file
+        await _analysisStatusService.CreateJobAsync(analysisId, file.FileName, cancellationToken);
+        _logger.LogInformation("Created initial DB job record for ID '{AnalysisId}' with file name '{FileName}'", analysisId, file.FileName);
+
         await _storageService.SaveAssemblyFileAsync(file, analysisId, cancellationToken);
         _logger.LogInformation("Saved uploaded file '{FileName}' for analysis ID '{AnalysisId}'", file.FileName, analysisId);
 
-        // Set pending status
-        await _analysisStatusService.SetStatusAsync(analysisId, AnalysisStatus.Pending, null, cancellationToken);
-        _logger.LogInformation("Set initial status to 'Pending' for ID '{AnalysisId}'", analysisId);
-
-        // Add assembly to analysis queue
         var analysisTask = new AnalysisTask(analysisId);
         await _backgroundTaskQueue.EnqueueAsync(analysisTask);
         _logger.LogInformation("Enqueued analysis task to background worker for ID '{AnalysisId}'", analysisId);

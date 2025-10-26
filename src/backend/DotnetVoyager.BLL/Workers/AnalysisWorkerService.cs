@@ -10,18 +10,18 @@ using Microsoft.Extensions.Options;
 
 namespace DotnetVoyager.BLL.Workers;
 
-public class QueuedHostedService : BackgroundService
+public class AnalysisWorkerService : BackgroundService
 {
-    private readonly ILogger<QueuedHostedService> _logger;
+    private readonly ILogger<AnalysisWorkerService> _logger;
     private readonly IServiceProvider _serviceProvider;
-    private readonly IBackgroundTaskQueue _taskQueue;
+    private readonly IAnalysisTaskQueue _taskQueue;
     private readonly WorkerOptions _workerOptions;
 
-    public QueuedHostedService(
+    public AnalysisWorkerService(
         IOptions<WorkerOptions> workerOptions,
-        ILogger<QueuedHostedService> logger,
+        ILogger<AnalysisWorkerService> logger,
         IServiceProvider serviceProvider,
-        IBackgroundTaskQueue taskQueue)
+        IAnalysisTaskQueue taskQueue)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
@@ -72,7 +72,7 @@ public class QueuedHostedService : BackgroundService
                     var analysisId = task.AnalysisId;
 
                     // Set "Processing" status
-                    await statusService.SetStatusAsync(analysisId, AnalysisStatus.Processing, null, linkedToken);
+                    await statusService.SetStatusAsync(analysisId, AssemblyAnalysisStatus.Processing, null, linkedToken);
                     _logger.LogInformation(
                         "Worker is processing task. Status set to 'Processing' for Analysis ID: {AnalysisId}", analysisId);
 
@@ -83,7 +83,7 @@ public class QueuedHostedService : BackgroundService
                     {
                         _logger.LogWarning(
                             "No assembly file found for Analysis ID: {AnalysisId}. Setting status to Failed.", analysisId);
-                        await statusService.SetStatusAsync(analysisId, AnalysisStatus.Failed, "Assembly file not found.", linkedToken);
+                        await statusService.SetStatusAsync(analysisId, AssemblyAnalysisStatus.Failed, "Assembly file not found.", linkedToken);
                         continue;
                     }
 
@@ -101,7 +101,7 @@ public class QueuedHostedService : BackgroundService
                     _logger.LogInformation("Saved structure for Analysis ID: {AnalysisId}", analysisId);
 
                     // Set "Completed" status
-                    await statusService.SetStatusAsync(task.AnalysisId, AnalysisStatus.Completed, null, linkedToken);
+                    await statusService.SetStatusAsync(task.AnalysisId, AssemblyAnalysisStatus.Completed, null, linkedToken);
                     _logger.LogInformation("Successfully processed task. Status set to 'Completed' for Analysis ID: {AnalysisId}", task.AnalysisId);
                 }
             }
@@ -133,7 +133,7 @@ public class QueuedHostedService : BackgroundService
             using (var scope = _serviceProvider.CreateScope())
             {
                 var statusService = scope.ServiceProvider.GetRequiredService<IAnalysisStatusService>();
-                await statusService.SetStatusAsync(analysisId, AnalysisStatus.Failed, errorMessage, token);
+                await statusService.SetStatusAsync(analysisId, AssemblyAnalysisStatus.Failed, errorMessage, token);
                 _logger.LogWarning("Set status to 'Failed' for Analysis ID: {AnalysisId}", analysisId);
             }
         }

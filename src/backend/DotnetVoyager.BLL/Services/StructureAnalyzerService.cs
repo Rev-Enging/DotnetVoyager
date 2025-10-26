@@ -13,27 +13,27 @@ public class StructureAnalyzerService : IStructureAnalyzerService
 {
     private const string NoNamespace = "[No Namespace]";
 
+    // Assembly does not have a metadata token, so we use a constant value
+    private const int AssemblyToken = 0;
+
+    // Namespace does not have a metadata token, so we use a constant value
+    private const int NamespaceToken = 0;
+
     public Task<StructureNodeDto> AnalyzeStructureAsync(string assemblyPath)
     {
-        // Робота з Mono.Cecil є синхронною і може бути CPU/IO-інтенсивною.
-        // Ми переносимо її в фоновий потік, щоб не блокувати викликаючий потік (напр. UI або API).
         return Task.Run(() =>
         {
-            // 'using' критично важливий для звільнення файлу збірки!
             using var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
             return AnalyzeAssembly(assembly);
         });
     }
 
-    /// <summary>
-    /// Створює кореневий вузол для самої збірки.
-    /// </summary>
     private StructureNodeDto AnalyzeAssembly(AssemblyDefinition assembly)
     {
         var namespaceNodes = assembly.MainModule.Types
-            .Where(t => t.IsPublic) // Беремо тільки публічні типи
+            .Where(t => t.IsPublic)
             .GroupBy(t => t.Namespace ?? NoNamespace)
-            .Select(AnalyzeNamespace) // Використовуємо чистий метод-трансформер
+            .Select(AnalyzeNamespace)
             .OrderBy(n => n.Name)
             .ToList();
 
@@ -41,18 +41,15 @@ public class StructureAnalyzerService : IStructureAnalyzerService
         {
             Name = assembly.Name.Name,
             Type = StructureNodeType.Assembly,
-            Token = 0, // Збірка не має релевантного токена в цьому контексті
+            Token = AssemblyToken,
             Children = namespaceNodes.Any() ? namespaceNodes : null
         };
     }
 
-    /// <summary>
-    /// Створює вузол для простору імен з його дочірніми типами.
-    /// </summary>
     private StructureNodeDto AnalyzeNamespace(IGrouping<string, TypeDefinition> namespaceGroup)
     {
         var typeNodes = namespaceGroup
-            .Select(AnalyzeTypeDefinition) // Делегуємо аналіз типу
+            .Select(AnalyzeTypeDefinition)
             .OrderBy(t => t.Name)
             .ToList();
 
@@ -60,31 +57,25 @@ public class StructureAnalyzerService : IStructureAnalyzerService
         {
             Name = namespaceGroup.Key,
             Type = StructureNodeType.Namespace,
-            Token = 0, // Простір імен не має токена
+            Token = NamespaceToken,
             Children = typeNodes.Any() ? typeNodes : null
         };
     }
 
-    /// <summary>
-    /// Створює вузол для типу (клас, інтерфейс, структура).
-    /// </summary>
     private StructureNodeDto AnalyzeTypeDefinition(TypeDefinition type)
     {
-        // Збираємо публічні методи (крім конструкторів)
         var methodNodes = type.Methods
-            .Where(m => m.IsPublic && !m.IsConstructor && !m.IsSpecialName) // !IsSpecialName приховає get/set
+            .Where(m => !m.IsConstructor && !m.IsSpecialName)
             .Select(m => new StructureNodeDto
             {
                 Name = m.Name,
                 Type = StructureNodeType.Method,
                 Token = m.MetadataToken.ToInt32(),
-                Children = null // Методи - кінцеві вузли
+                Children = null
             })
             .OrderBy(m => m.Name);
 
-        // (Бонус) Збираємо публічні властивості
         var propertyNodes = type.Properties
-            .Where(p => (p.GetMethod?.IsPublic ?? false) || (p.SetMethod?.IsPublic ?? false))
             .Select(p => new StructureNodeDto
             {
                 Name = p.Name,
@@ -99,7 +90,7 @@ public class StructureAnalyzerService : IStructureAnalyzerService
         return new StructureNodeDto
         {
             Name = type.Name,
-            Type = GetNodeType(type), // Використовуємо enum
+            Type = GetNodeType(type),
             Token = type.MetadataToken.ToInt32(),
             Children = children.Any() ? children : null
         };
@@ -110,13 +101,12 @@ public class StructureAnalyzerService : IStructureAnalyzerService
         if (type.IsInterface)
             return StructureNodeType.Interface;
 
-        if (type.IsValueType) // Це включає struct
+        if (type.IsValueType)
             return StructureNodeType.Struct;
 
         if (type.IsClass)
             return StructureNodeType.Class;
 
-        // За замовчуванням
         return StructureNodeType.Class;
     }
 }

@@ -28,7 +28,7 @@ public class GetStructureHandler : IRequestHandler<GetStructureQuery, Result<Str
             return Result.Fail(new NotFoundError($"Analysis with ID '{request.AnalysisId}' not found."));
         }
 
-        if (statusDto.Status != AnalysisStatus.Completed)
+        if (statusDto.Status != AssemblyAnalysisStatus.Completed)
         {
             return Result.Fail(new AnalysisNotCompletedError(statusDto.Status));
         }

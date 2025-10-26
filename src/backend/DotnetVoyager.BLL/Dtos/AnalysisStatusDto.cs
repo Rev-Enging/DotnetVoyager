@@ -4,11 +4,15 @@ namespace DotnetVoyager.BLL.Dtos;
 
 public record AnalysisStatusDto
 {
-    public required string AnalysisId { get; init; }
+    public required string AnalysisId { get; set; }
 
-    public required AnalysisStatus Status { get; init; }
+    public required AssemblyAnalysisStatus Status { get; set; } = AssemblyAnalysisStatus.Pending;
 
-    public string? ErrorMessage { get; init; }
+    public string? ErrorMessage { get; set; }
 
-    public DateTime LastUpdatedUtc { get; init; }
+    public ZipGenerationStatus ZipStatus { get; set; } = ZipGenerationStatus.NotStarted;
+
+    public string? ZipErrorMessage { get; set; }
+
+    public DateTime LastUpdatedUtc { get; set; }
 }

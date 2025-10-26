@@ -1,9 +1,15 @@
 using DotnetVoyager.BLL;
 using DotnetVoyager.BLL.Constants;
+using DotnetVoyager.BLL.Enums;
+using DotnetVoyager.BLL.Logging;
+using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Options;
 using DotnetVoyager.BLL.Services;
 using DotnetVoyager.BLL.Workers;
+using DotnetVoyager.DAL.Data;
+using DotnetVoyager.DAL.Initialization;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,7 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 // Configure options
-builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(ProjectConstants.StorageSettingsSectionName));
+builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(ProjectConstants.AssemblyStorageSettingsSectionName));
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(ProjectConstants.WorkerSettingsSectionName));
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(ProjectConstants.CorsOptionsSectionName));
 
@@ -21,16 +27,35 @@ builder.Services.AddScoped<IDependencyAnalyzerService, DependencyAnalyzerService
 builder.Services.AddScoped<IMetadataReaderService, MetadataReaderService>();
 builder.Services.AddScoped<IStatisticsService, StatisticsService>();
 builder.Services.AddScoped<IAssemblyValidator, AssemblyValidator>();
-builder.Services.AddScoped<IAnalysisStatusService, AnalysisStatusService>();
+builder.Services.AddScoped<IAnalysisStatusService, DatabaseAnalysisStatusService>();
 builder.Services.AddScoped<IStructureAnalyzerService, StructureAnalyzerService>();
 builder.Services.AddScoped<ICodeDecompilationService, CodeDecompilationService>();
-builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+builder.Services.AddScoped<IFullDecompilationService, FullDecompilationService>();
+builder.Services.AddSingleton<IDecompilationTaskQueue, DecompilationTaskQueue>();
+builder.Services.AddSingleton<IAnalysisTaskQueue, AnalysisTaskQueue>();
+
+builder.Services.AddDbContext<AnalysisDbContext>((serviceProvider, optionsBuilder) =>
+{
+    var storageOptions = serviceProvider.GetRequiredService<IOptions<StorageOptions>>().Value;
+
+    var storagePath = Path.IsPathRooted(storageOptions.Path)
+        ? storageOptions.Path
+        : Path.Combine(builder.Environment.ContentRootPath, storageOptions.Path);
+
+    Directory.CreateDirectory(storagePath);
+
+    var dbPath = Path.Combine(storagePath, "analysis_state.db");
+    var connectionString = $"Data Source={dbPath}";
+
+    optionsBuilder.UseSqlite(connectionString);
+});
 
 // Add FluentValidation
 builder.Services.AddValidatorsFromAssemblyContaining<BllAssemblyMarker>();
 
 // Configure background services
-builder.Services.AddHostedService<QueuedHostedService>();
+builder.Services.AddHostedService<AnalysisWorkerService>();
+builder.Services.AddHostedService<DecompilationWorkerService>();
 
 // Configure logging
 builder.Logging.AddSimpleConsole(options =>
@@ -75,7 +100,9 @@ builder.Services.AddCors(options =>
 // Build the app
 var app = builder.Build();
 
-ValidateAndLogSettings(app);
+MissingSettingsLogger.LogMissingSettings(app);
+
+await DatabaseInitializer.InitializeAndRecoverTasksAsync(app);
 
 if (app.Environment.IsDevelopment())
 {
@@ -92,41 +119,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 await app.RunAsync();
-
-static void ValidateAndLogSettings(WebApplication webApp)
-{
-    using var scope = webApp.Services.CreateScope();
-    var services = scope.ServiceProvider;
-
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    var config = services.GetRequiredService<IConfiguration>();
-
-    // StorageOptions
-    var storageOptions = services.GetRequiredService<IOptions<StorageOptions>>().Value;
-    var storageSection = config.GetSection(ProjectConstants.StorageSettingsSectionName);
-
-    logger.LogInformation($"Validating {nameof(StorageOptions)} settings...");
-    LogIfSettingIsMissing(logger, storageSection, nameof(StorageOptions.Path), storageOptions.Path);
-    LogIfSettingIsMissing(logger, storageSection, nameof(StorageOptions.FileLifetimeMinutes), storageOptions.FileLifetimeMinutes);
-
-    // WorkerOptions
-    var workerOptions = services.GetRequiredService<IOptions<WorkerOptions>>().Value;
-    var workerSection = config.GetSection(ProjectConstants.WorkerSettingsSectionName);
-
-    logger.LogInformation($"Validating {nameof(WorkerOptions)} settings...");
-    LogIfSettingIsMissing(logger, workerSection, nameof(WorkerOptions.AnalysisConcurrentWorkers), workerOptions.AnalysisConcurrentWorkers);
-    LogIfSettingIsMissing(logger, workerSection, nameof(WorkerOptions.AnalysisTimeoutMinutes), workerOptions.AnalysisTimeoutMinutes);
-}
-
-static void LogIfSettingIsMissing(ILogger logger, IConfigurationSection section, string key, object defaultValue)
-{
-    if (!section.GetChildren().Any(x => x.Key == key))
-    {
-        logger.LogWarning(
-            "The '{SettingName}' was not found in section '{SectionName}'. Using default value: {DefaultValue}",
-            key,
-            section.Key,
-            defaultValue
-        );
-    }
-}

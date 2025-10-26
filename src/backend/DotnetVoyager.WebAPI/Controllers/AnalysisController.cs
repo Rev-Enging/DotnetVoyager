@@ -1,8 +1,10 @@
 ﻿using DotnetVoyager.BLL.Constants;
 using DotnetVoyager.BLL.Dtos;
 using DotnetVoyager.BLL.Errors;
+using DotnetVoyager.BLL.MediatR.Commands.PrepareZip;
 using DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
 using DotnetVoyager.BLL.MediatR.Queries.GetDecompiledCode;
+using DotnetVoyager.BLL.MediatR.Queries.GetFullDecompiledCodeInZip;
 using DotnetVoyager.BLL.MediatR.Queries.GetStatus;
 using DotnetVoyager.BLL.MediatR.Queries.GetStructure;
 using DotnetVoyager.WebAPI.Dtos;
@@ -17,13 +19,10 @@ namespace DotnetVoyager.WebAPI.Controllers;
 public class AnalysisController : ControllerBase
 {
     private readonly IMediator _mediator;
-    private readonly ILogger<AnalysisController> _logger;
 
     public AnalysisController(
-        IMediator mediator,
-        ILogger<AnalysisController> logger)
+        IMediator mediator)
     {
-        _logger = logger;
         _mediator = mediator;
     }
 
@@ -46,13 +45,11 @@ public class AnalysisController : ControllerBase
 
         if (result.HasError<ValidationError>())
         {
-            var validationError = result.GetError<ValidationError>()!;
-            return HandleValidationError(validationError);
+            return HandleValidationError(result.GetError<ValidationError>()!);
         }
 
-        _logger.LogError("Unexpected error during assembly upload: {Errors}", result.Errors.Select(e => e.Message));
         return Problem(
-            detail: "An unexpected error occurred during upload.",
+            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
             statusCode: StatusCodes.Status500InternalServerError
         );
     }
@@ -60,6 +57,7 @@ public class AnalysisController : ControllerBase
     [HttpGet("{analysisId}/status")]
     [ProducesResponseType(typeof(AnalysisStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetStatus(string analysisId, CancellationToken cancellationToken)
     {
         var query = new GetStatusQuery(analysisId);
@@ -78,10 +76,9 @@ public class AnalysisController : ControllerBase
             );
         }
 
-        _logger.LogWarning("Failed to get status for {AnalysisId}: {Errors}", analysisId, result.Errors.Select(e => e.Message));
         return Problem(
-            detail: "An unexpected error occured during status query",
-            statusCode: StatusCodes.Status400BadRequest
+            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            statusCode: StatusCodes.Status500InternalServerError
         );
     }
 
@@ -89,7 +86,7 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(StructureNodeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetStructure(string analysisId, CancellationToken cancellationToken)
     {
         var query = new GetStructureQuery(analysisId);
@@ -116,17 +113,16 @@ public class AnalysisController : ControllerBase
             );
         }
 
-        _logger.LogWarning("Bad request for GetStructure {AnalysisId}: {Errors}", analysisId, result.Errors.Select(e => e.Message));
         return Problem(
-            detail: "Unexpected error occured during structure query",
-            statusCode: StatusCodes.Status400BadRequest
+            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            statusCode: StatusCodes.Status500InternalServerError
         );
     }
 
     [HttpGet("{analysisId}/decompile/{lookupToken:int}")]
     [ProducesResponseType(typeof(DecompiledCodeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetDecompiledCode(string analysisId, int lookupToken, CancellationToken cancellationToken)
     {
         var query = new GetDecompiledCodeQuery(analysisId, lookupToken);
@@ -146,8 +142,68 @@ public class AnalysisController : ControllerBase
         }
 
         return Problem(
-            detail: "Unexpected error occured during decompile query",
-            statusCode: StatusCodes.Status400BadRequest
+            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            statusCode: StatusCodes.Status500InternalServerError
+        );
+    }
+
+    [HttpPost("{analysisId}/prepare-zip")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> PrepareZip(string analysisId, CancellationToken cancellationToken)
+    {
+        var command = new PrepareZipCommand(analysisId);
+        var result = await _mediator.Send(command, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Accepted();
+        }
+
+        if (result.HasError<NotFoundError>())
+        {
+            return Problem(
+                detail: result.GetError<NotFoundError>()!.Message, 
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        return Problem(
+            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            statusCode: StatusCodes.Status500InternalServerError
+        );
+    }
+
+    [HttpGet("{analysisId}/download-zip")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> DownloadZip(string analysisId, CancellationToken cancellationToken)
+    {
+        var command = new DownloadZipCommand(analysisId);
+        var result = await _mediator.Send(command, cancellationToken);
+
+        if (result.IsSuccess) 
+        {
+            var dto = result.Value;
+
+            return new FileStreamResult(dto.FileStream, dto.ContentType)
+            {
+                FileDownloadName = dto.FileDownloadName
+            };
+        }
+
+        if (result.HasError<NotFoundError>())
+        {
+            return Problem(
+                detail: result.GetError<NotFoundError>()!.Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        return Problem(
+            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            statusCode: StatusCodes.Status500InternalServerError
         );
     }
 
