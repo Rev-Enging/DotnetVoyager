@@ -1,8 +1,7 @@
 using DotnetVoyager.BLL;
 using DotnetVoyager.BLL.Constants;
-using DotnetVoyager.BLL.Enums;
+using DotnetVoyager.BLL.Factories;
 using DotnetVoyager.BLL.Logging;
-using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Options;
 using DotnetVoyager.BLL.Services;
 using DotnetVoyager.BLL.Workers;
@@ -31,6 +30,8 @@ builder.Services.AddScoped<IAnalysisStatusService, DatabaseAnalysisStatusService
 builder.Services.AddScoped<IStructureAnalyzerService, StructureAnalyzerService>();
 builder.Services.AddScoped<ICodeDecompilationService, CodeDecompilationService>();
 builder.Services.AddScoped<IFullDecompilationService, FullDecompilationService>();
+builder.Services.AddScoped<IInheritanceGraphService, InheritanceGraphService>();
+builder.Services.AddSingleton<IDecompilerFactory, DecompilerFactory>();
 builder.Services.AddSingleton<IDecompilationTaskQueue, DecompilationTaskQueue>();
 builder.Services.AddSingleton<IAnalysisTaskQueue, AnalysisTaskQueue>();
 

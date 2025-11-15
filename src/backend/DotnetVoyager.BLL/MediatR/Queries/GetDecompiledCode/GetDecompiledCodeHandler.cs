@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 
 namespace DotnetVoyager.BLL.MediatR.Queries.GetDecompiledCode;
 
+public record GetDecompiledCodeQuery(string AnalysisId, int lookupToken) : IRequest<Result<DecompiledCodeDto>>;
+
 public class GetDecompiledCodeHandler : IRequestHandler<GetDecompiledCodeQuery, Result<DecompiledCodeDto>>
 {
     private readonly IStorageService _storageService;

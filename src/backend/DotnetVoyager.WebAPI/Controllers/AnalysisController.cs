@@ -5,6 +5,7 @@ using DotnetVoyager.BLL.MediatR.Commands.PrepareZip;
 using DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
 using DotnetVoyager.BLL.MediatR.Queries.GetDecompiledCode;
 using DotnetVoyager.BLL.MediatR.Queries.GetFullDecompiledCodeInZip;
+using DotnetVoyager.BLL.MediatR.Queries.GetMetadata;
 using DotnetVoyager.BLL.MediatR.Queries.GetStatus;
 using DotnetVoyager.BLL.MediatR.Queries.GetStructure;
 using DotnetVoyager.WebAPI.Dtos;
@@ -34,9 +35,12 @@ public class AnalysisController : ControllerBase
     [RequestFormLimits(MultipartBodyLengthLimit = ProjectConstants.MaxAssemblySizeInBytes)]
     public async Task<IActionResult> Upload([FromForm] UploadAssemblyRequestDto request, CancellationToken cancellationToken)
     {
-        var bllDto = request.ToBllDto();
+        var command = new UploadAssemblyCommand(new UploadAssemblyDto
+        {
+            File = request.File.ToFileDto()
+        });
 
-        var result = await _mediator.Send(new UploadAssemblyCommand(bllDto), cancellationToken);
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (result.IsSuccess)
         {
@@ -49,7 +53,7 @@ public class AnalysisController : ControllerBase
         }
 
         return Problem(
-            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            detail: result.Errors.FirstOrDefault()?.Message,
             statusCode: StatusCodes.Status500InternalServerError
         );
     }
@@ -67,17 +71,58 @@ public class AnalysisController : ControllerBase
         {
             return Ok(result.Value);
         }
-        
-        if (result.HasError<NotFoundError>())
+
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
         {
             return Problem(
-                detail: result.GetError<NotFoundError>()!.Message,
+                detail: notFoundErrors.First().Message,
                 statusCode: StatusCodes.Status404NotFound
             );
         }
 
         return Problem(
-            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            detail: result.Errors.FirstOrDefault()?.Message,
+            statusCode: StatusCodes.Status500InternalServerError
+        );
+    }
+
+    [HttpGet("{analysisId}/metadata")]
+    [ProducesResponseType(typeof(AssemblyMetadataDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetMetadata(string analysisId, CancellationToken cancellationToken)
+    {
+        var query = new GetMetadataQuery(analysisId);
+        var result = await _mediator.Send(query, cancellationToken);
+
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
+        {
+            return Problem(
+                detail: notFoundErrors.First().Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        if (result.HasError<AnalysisNotCompletedError>(out var analysisNotCompletedErrors))
+        {
+            return Problem(
+                detail: analysisNotCompletedErrors.First().Message,
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        return Problem(
+            detail: result.Errors.FirstOrDefault()?.Message,
             statusCode: StatusCodes.Status500InternalServerError
         );
     }
@@ -97,24 +142,24 @@ public class AnalysisController : ControllerBase
             return Ok(result.Value);
         }
 
-        if (result.HasError<NotFoundError>())
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
         {
             return Problem(
-                detail: result.GetError<NotFoundError>()!.Message,
+                detail: notFoundErrors.First().Message,
                 statusCode: StatusCodes.Status404NotFound
             );
         }
 
-        if (result.HasError<AnalysisNotCompletedError>())
+        if (result.HasError<AnalysisNotCompletedError>(out var analysisNotCompletedErrors))
         {
             return Problem(
-                detail: result.GetError<AnalysisNotCompletedError>()!.Message,
+                detail: analysisNotCompletedErrors.First().Message,
                 statusCode: StatusCodes.Status409Conflict
             );
         }
 
         return Problem(
-            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            detail: result.Errors.FirstOrDefault()?.Message,
             statusCode: StatusCodes.Status500InternalServerError
         );
     }
@@ -133,16 +178,16 @@ public class AnalysisController : ControllerBase
             return Ok(result.Value);
         }
 
-        if (result.HasError<NotFoundError>())
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
         {
             return Problem(
-                detail: result.GetError<NotFoundError>()!.Message,
+                detail: notFoundErrors.First().Message,
                 statusCode: StatusCodes.Status404NotFound
             );
         }
 
         return Problem(
-            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            detail: result.Errors.FirstOrDefault()?.Message,
             statusCode: StatusCodes.Status500InternalServerError
         );
     }
@@ -161,15 +206,16 @@ public class AnalysisController : ControllerBase
             return Accepted();
         }
 
-        if (result.HasError<NotFoundError>())
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
         {
             return Problem(
-                detail: result.GetError<NotFoundError>()!.Message, 
-                statusCode: StatusCodes.Status404NotFound);
+                detail: notFoundErrors.First().Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
         }
 
         return Problem(
-            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            detail: result.Errors.FirstOrDefault()?.Message,
             statusCode: StatusCodes.Status500InternalServerError
         );
     }
@@ -193,16 +239,16 @@ public class AnalysisController : ControllerBase
             };
         }
 
-        if (result.HasError<NotFoundError>())
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
         {
             return Problem(
-                detail: result.GetError<NotFoundError>()!.Message,
+                detail: notFoundErrors.First().Message,
                 statusCode: StatusCodes.Status404NotFound
             );
         }
 
         return Problem(
-            detail: string.Join("; ", result.Errors.Select(x => x.Message)),
+            detail: result.Errors.FirstOrDefault()?.Message,
             statusCode: StatusCodes.Status500InternalServerError
         );
     }

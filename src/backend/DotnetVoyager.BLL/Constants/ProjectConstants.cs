@@ -2,6 +2,8 @@
 
 public static class ProjectConstants
 {
+    // TODO: Make separarate classes like ProjectConstants_WorkerSettings and ProjectConstants_AssemblyStorage
+
     public const int MaxAssemblySizeInMegabytes = 3;
     public const int MaxAssemblySizeInBytes = MaxAssemblySizeInMegabytes * 1024 * 1024;
 
@@ -20,22 +22,6 @@ public static class ProjectConstants
     public static readonly string AnalysisMetadataFileName = "metadata.json";
     public static readonly string AnalysisStatisticsFileName = "statistics.json";
     public static readonly string DecompiledZipFileName = "decompiled_source.zip";
+    public static readonly string AnalysisInheritanceGraphFileName = "inheritance-graph.json";
     public static readonly string AnalysisNamespaceStructureFileName = "namespace-tree.json";
 }
-
-/*public static class ProjectConstants_AssemblyStorage
-{
-    public static readonly string SectionName = "StorageOptions";
-    public static readonly string DefaultStoragePath = "AnalysisFiles";
-    public static readonly int DefaultFileLifetimeMinutes = 60;
-    public static readonly int DefaultCleanupIntervalMinutes = 60;
-}
-
-public static class ProjectConstants_WorkerSettings
-{
-    public static readonly string SettingsSectionName = "WorkerSettings";
-    public static readonly int DefaultAssemblyAnalysisConcurrentWorkers = 5;
-    public static readonly int DefaultAssemblyAnalysisTimeoutMinutes = 10;
-    public static readonly int DefaultAssemblyDecompilationConcurrentWorkers = 5;
-    public static readonly int DefaultAssemblyDecompilationTimeoutMinutes = 10;
-}*/

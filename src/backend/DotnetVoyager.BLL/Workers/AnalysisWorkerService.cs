@@ -55,7 +55,7 @@ public class AnalysisWorkerService : BackgroundService
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, timeoutCts.Token);
             var linkedToken = linkedCts.Token;
 
-            AnalysisTask? task = null; // <-- Визначте task поза try-блоком
+            AnalysisTask? task = null;
 
             try
             {
@@ -69,6 +69,7 @@ public class AnalysisWorkerService : BackgroundService
                     var metadataService = scope.ServiceProvider.GetRequiredService<IMetadataReaderService>();
                     var statisticService = scope.ServiceProvider.GetRequiredService<IStatisticsService>();
                     var structureService = scope.ServiceProvider.GetRequiredService<IStructureAnalyzerService>();
+                    var inheritanceGraphService = scope.ServiceProvider.GetRequiredService<IInheritanceGraphService>();
                     var analysisId = task.AnalysisId;
 
                     // Set "Processing" status
@@ -99,6 +100,10 @@ public class AnalysisWorkerService : BackgroundService
                     var structure = await structureService.AnalyzeStructureAsync(assemblyPath);
                     await storageService.SaveDataAsync(analysisId, structure, ProjectConstants.AnalysisNamespaceStructureFileName, linkedToken);
                     _logger.LogInformation("Saved structure for Analysis ID: {AnalysisId}", analysisId);
+
+                    var inheritanceGraph = await inheritanceGraphService.BuildGraphAsync(assemblyPath);
+                    await storageService.SaveDataAsync(analysisId, inheritanceGraph, ProjectConstants.AnalysisInheritanceGraphFileName, linkedToken);
+                    _logger.LogInformation("Saved inheritance graph for Analysis ID: {AnalysisId}", analysisId);
 
                     // Set "Completed" status
                     await statusService.SetStatusAsync(task.AnalysisId, AssemblyAnalysisStatus.Completed, null, linkedToken);

@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging;
 
 namespace DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
 
+public record UploadAssemblyCommand(UploadAssemblyDto uploadDto) : IRequest<Result<UploadAssemblyResultDto>>;
+
 public class UploadAssemblyHandler : IRequestHandler<UploadAssemblyCommand, Result<UploadAssemblyResultDto>>
 {
     private readonly IStorageService _storageService;

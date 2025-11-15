@@ -5,23 +5,28 @@ using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.Services;
 using FluentResults;
 using MediatR;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
-namespace DotnetVoyager.BLL.MediatR.Queries.GetStructure;
+namespace DotnetVoyager.BLL.MediatR.Queries.GetMetadata;
 
-public record GetStructureQuery(string AnalysisId) : IRequest<Result<StructureNodeDto>>;
+public record GetMetadataQuery(string AnalysisId) : IRequest<Result<AssemblyMetadataDto>>;
 
-public class GetStructureHandler : IRequestHandler<GetStructureQuery, Result<StructureNodeDto>>
+public class GetMetadataHandler : IRequestHandler<GetMetadataQuery, Result<AssemblyMetadataDto>>
 {
     private readonly IStorageService _storageService;
     private readonly IAnalysisStatusService _statusService;
 
-    public GetStructureHandler(IStorageService storageService, IAnalysisStatusService statusService)
+    public GetMetadataHandler(IStorageService storageService, IAnalysisStatusService statusService)
     {
         _storageService = storageService;
         _statusService = statusService;
     }
 
-    public async Task<Result<StructureNodeDto>> Handle(GetStructureQuery request, CancellationToken cancellationToken)
+    public async Task<Result<AssemblyMetadataDto>> Handle(GetMetadataQuery request, CancellationToken cancellationToken)
     {
         var statusDto = await _statusService.GetStatusAsync(request.AnalysisId, cancellationToken);
 
@@ -35,17 +40,17 @@ public class GetStructureHandler : IRequestHandler<GetStructureQuery, Result<Str
             return Result.Fail(new AnalysisNotCompletedError(statusDto.Status));
         }
 
-        var structureDto = await _storageService.ReadDataAsync<StructureNodeDto>(
+        var metadataDto = await _storageService.ReadDataAsync<AssemblyMetadataDto>(
             request.AnalysisId,
-            ProjectConstants.AnalysisNamespaceStructureFileName,
+            ProjectConstants.AnalysisMetadataFileName,
             cancellationToken);
 
-        if (structureDto == null)
+        if (metadataDto == null)
         {
             return Result.Fail(new Error(
-                $"Internal error: Analysis '{request.AnalysisId}' is marked as Completed, but structure file is missing."));
+                $"Internal error: Analysis '{request.AnalysisId}' is marked as Completed, but metadata file is missing."));
         }
 
-        return Result.Ok(structureDto);
+        return Result.Ok(metadataDto);
     }
 }

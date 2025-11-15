@@ -6,6 +6,8 @@ using MediatR;
 
 namespace DotnetVoyager.BLL.MediatR.Queries.GetStatus;
 
+public record GetStatusQuery(string AnalysisId) : IRequest<Result<AnalysisStatusDto>>;
+
 public class GetStatusHandler : IRequestHandler<GetStatusQuery, Result<AnalysisStatusDto>>
 {
     private readonly IAnalysisStatusService _statusService;
