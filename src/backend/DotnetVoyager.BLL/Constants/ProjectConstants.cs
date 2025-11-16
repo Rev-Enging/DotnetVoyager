@@ -2,26 +2,68 @@
 
 public static class ProjectConstants
 {
-    // TODO: Make separarate classes like ProjectConstants_WorkerSettings and ProjectConstants_AssemblyStorage
-
     public const int MaxAssemblySizeInMegabytes = 3;
     public const int MaxAssemblySizeInBytes = MaxAssemblySizeInMegabytes * 1024 * 1024;
 
-    public static readonly string CorsOptionsSectionName = "CorsOptions";
+    public const string CorsOptionsSectionName = "CorsOptions";
 
-    public static readonly string AssemblyStorageSettingsSectionName = "StorageOptions";
-    public static readonly string DefaultAnalysisStoragePath = "AnalysisFiles";
-    public static readonly int DefaultFileLifetimeMinutes = 60;
-    public static readonly int DefaultCleanupIntervalMinutes = 60;
+    public const string AssemblyStorageSettingsSectionName = "StorageOptions";
+    public const string DefaultAnalysisStoragePath = "AnalysisFiles";
+    public const int DefaultFileLifetimeMinutes = 60;
+    public const int DefaultCleanupIntervalMinutes = 60;
 
-    public static readonly string WorkerSettingsSectionName = "WorkerSettings";
-    public static readonly int DefaultAnalysisConcurrentWorkers = 5;
-    public static readonly int DefaultAnalysisTimeoutMinutes = 10;
+    public const string WorkerSettingsSectionName = "WorkerSettings";
+    public const int DefaultAnalysisConcurrentWorkers = 5;
+    public const int DefaultAnalysisTimeoutMinutes = 10;
 
-    public static readonly string AnalysisStatusFileName = "status.json";
-    public static readonly string AnalysisMetadataFileName = "metadata.json";
-    public static readonly string AnalysisStatisticsFileName = "statistics.json";
-    public static readonly string DecompiledZipFileName = "decompiled_source.zip";
-    public static readonly string AnalysisInheritanceGraphFileName = "inheritance-graph.json";
-    public static readonly string AnalysisNamespaceStructureFileName = "namespace-tree.json";
+    public const string AnalysisMetadataFileName = "metadata.json";
+    public const string AnalysisStatisticsFileName = "statistics.json";
+    public const string AnalysisInheritanceGraphFileName = "inheritance-graph.json";
+    public const string AssemblyTreeFileName = "assembly-tree.json";
+    public const string AssemblyDependenciesFileName = "assembly-dependencies.json";
+    public const string DecompiledZipFileName = "decompiled_source.zip";
+}
+
+public static class AnalysisStepNames
+{
+    public const string Metadata = "Metadata";
+    public const string Statistics = "Statistics";
+    public const string AssemblyTree = "AssemblyTree";
+    public const string AssemblyDependencies = "AssemblyDependencies";
+    public const string InheritanceGraph = "InheritanceGraph";
+    public const string ZipGeneration = "ZipGeneration";
+
+    public static readonly IReadOnlyCollection<string> AllSteps =
+    [
+        Metadata,
+        Statistics,
+        AssemblyTree,
+        AssemblyDependencies,
+        InheritanceGraph,
+        ZipGeneration
+    ];
+
+    public static readonly IReadOnlyCollection<string> RequiredSteps =
+    [
+        Metadata,
+        Statistics,
+        AssemblyTree,
+        AssemblyDependencies,
+        InheritanceGraph
+    ];
+
+    public static bool IsValidStep(string stepName)
+        => AllSteps.Contains(stepName);
+
+    public static bool IsRequired(string stepName)
+        => RequiredSteps.Contains(stepName);
+
+    public static bool IsOptional(string stepName)
+        => !IsRequired(stepName);
+
+    public static IEnumerable<string> GetRequiredSteps()
+        => RequiredSteps;
+
+    public static IEnumerable<string> GetAllSteps()
+        => RequiredSteps.Append(ZipGeneration);
 }

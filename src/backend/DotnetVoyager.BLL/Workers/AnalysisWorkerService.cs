@@ -1,6 +1,4 @@
-﻿using DotnetVoyager.BLL.Constants;
-using DotnetVoyager.BLL.Enums;
-using DotnetVoyager.BLL.Models;
+﻿using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Options;
 using DotnetVoyager.BLL.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace DotnetVoyager.BLL.Workers;
 
+/// <summary>
+/// Unified worker that processes ALL analysis steps (required and optional)
+/// using the orchestrator pattern
+/// </summary>
 public class AnalysisWorkerService : BackgroundService
 {
     private readonly ILogger<AnalysisWorkerService> _logger;
@@ -31,121 +33,122 @@ public class AnalysisWorkerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var concurentWorkers = _workerOptions.AnalysisConcurrentWorkers;
+        var concurrentWorkers = _workerOptions.AnalysisConcurrentWorkers;
 
-        _logger.LogInformation("Queued Hosted Service is running with {WorkerCount} concurrent workers.", concurentWorkers);
+        _logger.LogInformation(
+            "Analysis Worker Service starting with {WorkerCount} concurrent workers",
+            concurrentWorkers);
 
-        var workerTasks = new List<Task>();
-
-        for (int i = 0; i < concurentWorkers; i++)
-        {
-            workerTasks.Add(ProcessQueueAsync(stoppingToken));
-        }
+        var workerTasks = Enumerable.Range(0, concurrentWorkers)
+            .Select(_ => ProcessQueueAsync(stoppingToken))
+            .ToList();
 
         await Task.WhenAll(workerTasks);
 
-        _logger.LogInformation("Queued Hosted Service is stopping.");
+        _logger.LogInformation("Analysis Worker Service stopped");
     }
 
     private async Task ProcessQueueAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(_workerOptions.AnalysisTimeoutMinutes));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, timeoutCts.Token);
-            var linkedToken = linkedCts.Token;
+            using var timeoutCts = new CancellationTokenSource(
+                TimeSpan.FromMinutes(_workerOptions.AnalysisTimeoutMinutes));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                stoppingToken, timeoutCts.Token);
 
             AnalysisTask? task = null;
 
             try
             {
-                // 1. Отримати завдання
-                task = await _taskQueue.DequeueAsync(linkedToken);
+                // 1. Dequeue task
+                task = await _taskQueue.DequeueAsync(linkedCts.Token);
 
-                using (var scope = _serviceProvider.CreateScope())
+                _logger.LogInformation(
+                    "Worker picked up task for Analysis ID: {AnalysisId}",
+                    task.AnalysisId);
+
+                // 2. Process ALL steps for this analysis using orchestrator
+                await ProcessAnalysisAsync(task.AnalysisId, linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+            {
+                if (task != null)
                 {
-                    var storageService = scope.ServiceProvider.GetRequiredService<IStorageService>();
-                    var statusService = scope.ServiceProvider.GetRequiredService<IAnalysisStatusService>();
-                    var metadataService = scope.ServiceProvider.GetRequiredService<IMetadataReaderService>();
-                    var statisticService = scope.ServiceProvider.GetRequiredService<IStatisticsService>();
-                    var structureService = scope.ServiceProvider.GetRequiredService<IStructureAnalyzerService>();
-                    var inheritanceGraphService = scope.ServiceProvider.GetRequiredService<IInheritanceGraphService>();
-                    var analysisId = task.AnalysisId;
-
-                    // Set "Processing" status
-                    await statusService.SetStatusAsync(analysisId, AssemblyAnalysisStatus.Processing, null, linkedToken);
-                    _logger.LogInformation(
-                        "Worker is processing task. Status set to 'Processing' for Analysis ID: {AnalysisId}", analysisId);
-
-                    // 3. Виконати роботу
-                    var assemblyPath = await storageService.FindAssemblyFilePathAsync(analysisId, linkedToken);
-
-                    if (assemblyPath == null)
-                    {
-                        _logger.LogWarning(
-                            "No assembly file found for Analysis ID: {AnalysisId}. Setting status to Failed.", analysisId);
-                        await statusService.SetStatusAsync(analysisId, AssemblyAnalysisStatus.Failed, "Assembly file not found.", linkedToken);
-                        continue;
-                    }
-
-                    // Perform analysis
-                    var metadata = await metadataService.GetAssemblyMetadataAsync(assemblyPath, linkedToken);
-                    await storageService.SaveDataAsync(analysisId, metadata, ProjectConstants.AnalysisMetadataFileName, linkedToken);
-                    _logger.LogInformation("Saved metadata for Analysis ID: {AnalysisId}", analysisId);
-
-                    var statistics = await statisticService.GetAssemblyStatisticsAsync(assemblyPath);
-                    await storageService.SaveDataAsync(analysisId, statistics, ProjectConstants.AnalysisStatisticsFileName, linkedToken);
-                    _logger.LogInformation("Saved statistics for Analysis ID: {AnalysisId}", analysisId);
-
-                    var structure = await structureService.AnalyzeStructureAsync(assemblyPath);
-                    await storageService.SaveDataAsync(analysisId, structure, ProjectConstants.AnalysisNamespaceStructureFileName, linkedToken);
-                    _logger.LogInformation("Saved structure for Analysis ID: {AnalysisId}", analysisId);
-
-                    var inheritanceGraph = await inheritanceGraphService.BuildGraphAsync(assemblyPath);
-                    await storageService.SaveDataAsync(analysisId, inheritanceGraph, ProjectConstants.AnalysisInheritanceGraphFileName, linkedToken);
-                    _logger.LogInformation("Saved inheritance graph for Analysis ID: {AnalysisId}", analysisId);
-
-                    // Set "Completed" status
-                    await statusService.SetStatusAsync(task.AnalysisId, AssemblyAnalysisStatus.Completed, null, linkedToken);
-                    _logger.LogInformation("Successfully processed task. Status set to 'Completed' for Analysis ID: {AnalysisId}", task.AnalysisId);
+                    _logger.LogWarning(
+                        "Task timed out for Analysis ID: {AnalysisId}",
+                        task.AnalysisId);
+                    await HandleTimeoutAsync(task.AnalysisId);
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                // Якщо скасування було через тайм-аут - це помилка
-                if (task != null && timeoutCts.IsCancellationRequested)
-                {
-                    _logger.LogWarning("Task timed out for Analysis ID: {AnalysisId}. Setting status to Failed.", task.AnalysisId);
-                    await UpdateStatusOnFailureAsync(task.AnalysisId, "Analysis task timed out.", CancellationToken.None);
-                }
+                _logger.LogInformation("Worker shutting down gracefully");
+                break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An error occurred while processing task ID: {AnalysisId}", task?.AnalysisId ?? "Unknown");
-                if (task != null)
-                {
-                    // Set status to Failed
-                    await UpdateStatusOnFailureAsync(task.AnalysisId, ex.Message, CancellationToken.None);
-                }
+                _logger.LogError(
+                    ex,
+                    "Unexpected error processing Analysis ID: {AnalysisId}",
+                    task?.AnalysisId ?? "Unknown");
             }
         }
     }
 
-    private async Task UpdateStatusOnFailureAsync(string analysisId, string errorMessage, CancellationToken token)
+    private async Task ProcessAnalysisAsync(string analysisId, CancellationToken cancellationToken)
     {
+        using var scope = _serviceProvider.CreateScope();
+        var orchestrator = scope.ServiceProvider.GetRequiredService<IAnalysisOrchestrator>();
+        var statusService = scope.ServiceProvider.GetRequiredService<IAnalysisStatusService>();
+
         try
         {
-            using (var scope = _serviceProvider.CreateScope())
+            // Execute steps one by one until no more pending steps
+            bool hasMoreSteps = true;
+
+            while (hasMoreSteps && !cancellationToken.IsCancellationRequested)
             {
-                var statusService = scope.ServiceProvider.GetRequiredService<IAnalysisStatusService>();
-                await statusService.SetStatusAsync(analysisId, AssemblyAnalysisStatus.Failed, errorMessage, token);
-                _logger.LogWarning("Set status to 'Failed' for Analysis ID: {AnalysisId}", analysisId);
+                hasMoreSteps = await orchestrator.ExecuteNextStepAsync(
+                    analysisId, cancellationToken);
+
+                // Update overall status after each step
+                await statusService.UpdateOverallStatusAsync(analysisId, cancellationToken);
             }
+
+            _logger.LogInformation(
+                "Completed processing all pending steps for Analysis ID: {AnalysisId}",
+                analysisId);
         }
         catch (Exception ex)
         {
-            // Якщо навіть оновлення статусу впало, ми нічого не можемо зробити, окрім логування.
-            _logger.LogError(ex, "CRITICAL: Failed to update status to 'Failed' for Analysis ID: {AnalysisId}", analysisId);
+            _logger.LogError(
+                ex,
+                "Error during orchestrated analysis for {AnalysisId}",
+                analysisId);
+
+            // Update overall status even on failure
+            await statusService.UpdateOverallStatusAsync(analysisId, CancellationToken.None);
+        }
+    }
+
+    private async Task HandleTimeoutAsync(string analysisId)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var statusService = scope.ServiceProvider.GetRequiredService<IAnalysisStatusService>();
+
+            // The orchestrator already marked the current step as failed
+            // Just update the overall status
+            await statusService.UpdateOverallStatusAsync(analysisId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "CRITICAL: Failed to handle timeout for Analysis ID: {AnalysisId}",
+                analysisId);
         }
     }
 }

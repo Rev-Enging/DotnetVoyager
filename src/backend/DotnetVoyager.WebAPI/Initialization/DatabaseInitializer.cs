@@ -1,6 +1,6 @@
-﻿using DotnetVoyager.BLL.Enums;
+﻿/*using DotnetVoyager.BLL.Enums;
 using DotnetVoyager.BLL.Models;
-using DotnetVoyager.BLL.Workers;
+using DotnetVoyager.BLL.Workers;*/
 using DotnetVoyager.DAL.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,36 +36,37 @@ public static class DatabaseInitializer
         IServiceProvider services,
         ILogger logger)
     {
-        var analysisQueue = services.GetRequiredService<IAnalysisTaskQueue>();
-        var decompilationQueue = services.GetRequiredService<IDecompilationTaskQueue>();
+        await Task.Delay(100);
+        /*        var analysisQueue = services.GetRequiredService<IAnalysisTaskQueue>();
+                var decompilationQueue = services.GetRequiredService<IDecompilationTaskQueue>();
 
-        var analysisTasks = await dbContext.AnalysisStatuses
-            .AsNoTracking()
-            .Where(j => j.Status == AssemblyAnalysisStatus.Pending ||
-                        j.Status == AssemblyAnalysisStatus.Processing)
-            .Select(j => j.AnalysisId)
-            .ToListAsync();
+                var analysisTasks = await dbContext.AnalysisStatuses
+                    .AsNoTracking()
+                    .Where(j => j.Status == AssemblyAnalysisStatus.Pending ||
+                                j.Status == AssemblyAnalysisStatus.Processing)
+                    .Select(j => j.AnalysisId)
+                    .ToListAsync();
 
-        foreach (var id in analysisTasks)
-        {
-            await analysisQueue.EnqueueAsync(new AnalysisTask(id));
-        }
+                foreach (var id in analysisTasks)
+                {
+                    await analysisQueue.EnqueueAsync(new AnalysisTask(id));
+                }
 
-        var decompTasks = await dbContext.AnalysisStatuses
-            .AsNoTracking()
-            .Where(j => j.ZipStatus == ZipGenerationStatus.Pending ||
-                        j.ZipStatus == ZipGenerationStatus.Processing)
-            .Select(j => j.AnalysisId)
-            .ToListAsync();
+                var decompTasks = await dbContext.AnalysisStatuses
+                    .AsNoTracking()
+                    .Where(j => j.ZipStatus == ZipGenerationStatus.Pending ||
+                                j.ZipStatus == ZipGenerationStatus.Processing)
+                    .Select(j => j.AnalysisId)
+                    .ToListAsync();
 
-        foreach (var id in decompTasks)
-        {
-            await decompilationQueue.EnqueueAsync(new AnalysisTask(id));
-        }
+                foreach (var id in decompTasks)
+                {
+                    await decompilationQueue.EnqueueAsync(new AnalysisTask(id));
+                }
 
-        logger.LogInformation(
-            "Database initialized. Recovered {AnalysisCount} analysis tasks and {DecompCount} decompilation tasks.",
-            analysisTasks.Count,
-            decompTasks.Count);
+                logger.LogInformation(
+                    "Database initialized. Recovered {AnalysisCount} analysis tasks and {DecompCount} decompilation tasks.",
+                    analysisTasks.Count,
+                    decompTasks.Count);*/
     }
 }

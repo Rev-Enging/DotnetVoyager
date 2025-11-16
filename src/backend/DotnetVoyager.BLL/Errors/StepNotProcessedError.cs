@@ -4,10 +4,11 @@ namespace DotnetVoyager.BLL.Errors;
 
 public sealed class StepNotProcessedError : Error
 {
-    public string StepName { get; }
+    public string AnalysisId { get; init; }
+    public string StepName { get; init; }
 
-    public StepNotProcessedError(string stepName)
-        : base($"Step '{stepName}' was not processed.")
+    public StepNotProcessedError(string analysisId, string stepName)
+        : base($"Step '{stepName}' was not processed for analysis {analysisId}.")
     {
         if (string.IsNullOrWhiteSpace(stepName))
         {
@@ -15,5 +16,6 @@ public sealed class StepNotProcessedError : Error
         }
 
         StepName = stepName;
+        AnalysisId = analysisId;
     }
 }

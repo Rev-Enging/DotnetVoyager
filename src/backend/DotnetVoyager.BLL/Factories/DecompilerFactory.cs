@@ -29,7 +29,12 @@ public class DecompilerFactory : IDecompilerFactory
             targetFramework: null
         );
 
-        var settings = new DecompilerSettings();
+        resolver.AddSearchDirectory(Path.GetDirectoryName(assemblyPath));
+
+        var settings = new DecompilerSettings
+        {
+            ThrowOnAssemblyResolveErrors = false
+        };
 
         return new CSharpDecompiler(
             assemblyPath,

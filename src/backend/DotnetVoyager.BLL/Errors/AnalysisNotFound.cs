@@ -1,10 +1,10 @@
 ﻿namespace DotnetVoyager.BLL.Errors;
 
-public sealed class AnalysisWithIdNotFound : NotFoundError
+public sealed class AnalysisNotFound : NotFoundError
 {
     public string AnalysisId { get; }
 
-    public AnalysisWithIdNotFound(string analysisId)
+    public AnalysisNotFound(string analysisId)
         : base($"Analysis with ID '{analysisId}' not found.") 
     {
         if (string.IsNullOrWhiteSpace(analysisId))

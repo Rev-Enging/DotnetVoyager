@@ -8,34 +8,34 @@ using FluentResults;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace DotnetVoyager.BLL.MediatR.Queries.GetMetadata;
+namespace DotnetVoyager.BLL.MediatR.Queries.GetStructure;
 
-public record GetMetadataQuery(string AnalysisId) : IRequest<Result<AssemblyMetadataDto>>;
+public record GetAssemblyTreeQuery(string AnalysisId) : IRequest<Result<AssemblyTreeDto>>;
 
-public class GetMetadataHandler : IRequestHandler<GetMetadataQuery, Result<AssemblyMetadataDto>>
+public class GetAssemblyTreeHandler : IRequestHandler<GetAssemblyTreeQuery, Result<AssemblyTreeDto>>
 {
     private readonly IStorageService _storageService;
     private readonly IAnalysisStatusService _statusService;
-    private readonly ILogger<GetMetadataHandler> _logger;
+    private readonly ILogger<GetAssemblyTreeHandler> _logger;
 
-    public GetMetadataHandler(
+    public GetAssemblyTreeHandler(
         IStorageService storageService,
         IAnalysisStatusService statusService,
-        ILogger<GetMetadataHandler> logger)
+        ILogger<GetAssemblyTreeHandler> logger)
     {
         _storageService = storageService;
         _statusService = statusService;
         _logger = logger;
     }
 
-    public async Task<Result<AssemblyMetadataDto>> Handle(
-        GetMetadataQuery request,
+    public async Task<Result<AssemblyTreeDto>> Handle(
+        GetAssemblyTreeQuery request,
         CancellationToken cancellationToken)
     {
         try
         {
-            const string stepName = AnalysisStepNames.Metadata;
-            const string fileName = ProjectConstants.AnalysisMetadataFileName;
+            const string stepName = AnalysisStepNames.AssemblyTree;
+            const string fileName = ProjectConstants.AssemblyTreeFileName;
 
             var stepStatus = await _statusService.GetStepStatusAsync(
                 request.AnalysisId,
@@ -57,28 +57,28 @@ public class GetMetadataHandler : IRequestHandler<GetMetadataQuery, Result<Assem
                     stepStatus.ErrorMessage));
             }
 
-            var metadataDto = await _storageService.ReadDataAsync<AssemblyMetadataDto>(
+            var structureDto = await _storageService.ReadDataAsync<AssemblyTreeDto>(
                 request.AnalysisId,
                 fileName,
                 cancellationToken);
 
-            if (metadataDto == null)
+            if (structureDto == null)
             {
                 _logger.LogError(
-                    "Metadata file missing for completed analysis {AnalysisId}",
+                    "Assembly tree file missing for completed analysis {AnalysisId}",
                     request.AnalysisId);
 
                 return Result.Fail(new Error(
-                    "Internal error: Metadata step completed but file is missing."));
+                    "Internal error: Assembly tree step completed but file is missing."));
             }
 
-            return Result.Ok(metadataDto);
+            return Result.Ok(structureDto);
         }
         catch (AnalysisNotFoundException ex)
         {
             _logger.LogWarning(
                 ex,
-                "Metadata requested for non-existent analysis: {AnalysisId}",
+                "Assembly tree requested for non-existent analysis: {AnalysisId}",
                 ex.AnalysisId);
 
             return Result.Fail(new AnalysisNotFound(ex.AnalysisId));

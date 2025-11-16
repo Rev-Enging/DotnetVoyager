@@ -1,5 +1,4 @@
 ﻿using DotnetVoyager.BLL.Dtos;
-using DotnetVoyager.BLL.Services;
 using FluentValidation;
 
 namespace DotnetVoyager.BLL.Validators;

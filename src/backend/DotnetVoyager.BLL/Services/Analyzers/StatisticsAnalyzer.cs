@@ -38,7 +38,7 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
 
             DecompiledLinesOfCode = CalculateDecompiledLinesOfCode(assemblyPath)
         };
-
+        assemblyDefinition.Dispose();
         return Task.FromResult(statistics);
     }
 

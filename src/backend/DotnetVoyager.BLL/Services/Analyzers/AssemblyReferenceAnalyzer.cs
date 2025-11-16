@@ -6,12 +6,12 @@ namespace DotnetVoyager.BLL.Services.Analyzers;
 
 public interface IAssemblyReferenceAnalyzer
 {
-    AssemblyDependenciesDto AnalyzeReferences(string assemblyPath);
+    Task<AssemblyDependenciesDto> AnalyzeReferences(string assemblyPath);
 }
 
 public class AssemblyReferenceAnalyzer : IAssemblyReferenceAnalyzer
 {
-    public AssemblyDependenciesDto AnalyzeReferences(string assemblyPath)
+    public Task<AssemblyDependenciesDto> AnalyzeReferences(string assemblyPath)
     {
         using var fileStream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var peReader = new PEReader(fileStream);
@@ -50,7 +50,7 @@ public class AssemblyReferenceAnalyzer : IAssemblyReferenceAnalyzer
             });
         }
 
-        return graph;
+        return Task.FromResult(graph);
     }
 
     private static string GetPublicKeyToken(byte[] publicKeyToken)

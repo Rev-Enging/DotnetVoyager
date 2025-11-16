@@ -1,6 +1,7 @@
-﻿using DotnetVoyager.BLL.Dtos;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.Services;
+using DotnetVoyager.BLL.Services.Analyzers;
 using FluentResults;
 using MediatR;
 using Microsoft.Extensions.Logging;

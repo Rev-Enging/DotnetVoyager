@@ -1,4 +1,5 @@
 ﻿using DotnetVoyager.BLL.Dtos;
+using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Options;
 using Microsoft.Extensions.Options;
 using Polly;
@@ -10,6 +11,8 @@ namespace DotnetVoyager.BLL.Services;
 public interface IStorageService
 {
     string GetAnalysisDirectoryPath(string analysisId);
+
+    Task<AnalysisLocationContext?> CreateAnalysisContextAsync(string analysisId, CancellationToken token = default);
 
     Task<string?> FindAssemblyFilePathAsync(string analysisId, CancellationToken token = default);
     Task<string> SaveAssemblyFileAsync(FileDto file, string analysisId, CancellationToken token = default);
@@ -33,6 +36,19 @@ public class StorageService : IStorageService
         _retryPolicy = Policy
             .Handle<IOException>()
             .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromMilliseconds(50));
+    }
+
+    public async Task<AnalysisLocationContext?> CreateAnalysisContextAsync(string analysisId, CancellationToken token = default)
+    {
+        var assemblyPath = await FindAssemblyFilePathAsync(analysisId, token);
+        if (assemblyPath == null) return null;
+
+        return new AnalysisLocationContext
+        {
+            AnalysisId = analysisId,
+            AssemblyPath = assemblyPath,
+            AnalysisDirectory = GetAnalysisDirectoryPath(analysisId)
+        };
     }
 
     public string GetAnalysisDirectoryPath(string analysisId)

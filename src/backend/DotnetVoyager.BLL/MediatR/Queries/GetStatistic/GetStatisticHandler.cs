@@ -8,34 +8,34 @@ using FluentResults;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace DotnetVoyager.BLL.MediatR.Queries.GetMetadata;
+namespace DotnetVoyager.BLL.MediatR.Queries.GetStatistic;
 
-public record GetMetadataQuery(string AnalysisId) : IRequest<Result<AssemblyMetadataDto>>;
+public record GetStatisticQuery(string AnalysisId) : IRequest<Result<AssemblyStatisticsDto>>;
 
-public class GetMetadataHandler : IRequestHandler<GetMetadataQuery, Result<AssemblyMetadataDto>>
+public class GetStatisticHandler : IRequestHandler<GetStatisticQuery, Result<AssemblyStatisticsDto>>
 {
     private readonly IStorageService _storageService;
     private readonly IAnalysisStatusService _statusService;
-    private readonly ILogger<GetMetadataHandler> _logger;
+    private readonly ILogger<GetStatisticHandler> _logger;
 
-    public GetMetadataHandler(
+    public GetStatisticHandler(
         IStorageService storageService,
         IAnalysisStatusService statusService,
-        ILogger<GetMetadataHandler> logger)
+        ILogger<GetStatisticHandler> logger)
     {
         _storageService = storageService;
         _statusService = statusService;
         _logger = logger;
     }
 
-    public async Task<Result<AssemblyMetadataDto>> Handle(
-        GetMetadataQuery request,
+    public async Task<Result<AssemblyStatisticsDto>> Handle(
+        GetStatisticQuery request,
         CancellationToken cancellationToken)
     {
         try
         {
-            const string stepName = AnalysisStepNames.Metadata;
-            const string fileName = ProjectConstants.AnalysisMetadataFileName;
+            const string stepName = AnalysisStepNames.Statistics;
+            const string fileName = ProjectConstants.AnalysisStatisticsFileName;
 
             var stepStatus = await _statusService.GetStepStatusAsync(
                 request.AnalysisId,
@@ -57,28 +57,28 @@ public class GetMetadataHandler : IRequestHandler<GetMetadataQuery, Result<Assem
                     stepStatus.ErrorMessage));
             }
 
-            var metadataDto = await _storageService.ReadDataAsync<AssemblyMetadataDto>(
+            var statisticsDto = await _storageService.ReadDataAsync<AssemblyStatisticsDto>(
                 request.AnalysisId,
                 fileName,
                 cancellationToken);
 
-            if (metadataDto == null)
+            if (statisticsDto == null)
             {
                 _logger.LogError(
-                    "Metadata file missing for completed analysis {AnalysisId}",
+                    "Statistics file missing for completed analysis {AnalysisId}",
                     request.AnalysisId);
 
                 return Result.Fail(new Error(
-                    "Internal error: Metadata step completed but file is missing."));
+                    "Internal error: Statistics step completed but file is missing."));
             }
 
-            return Result.Ok(metadataDto);
+            return Result.Ok(statisticsDto);
         }
         catch (AnalysisNotFoundException ex)
         {
             _logger.LogWarning(
                 ex,
-                "Metadata requested for non-existent analysis: {AnalysisId}",
+                "Statistics requested for non-existent analysis: {AnalysisId}",
                 ex.AnalysisId);
 
             return Result.Fail(new AnalysisNotFound(ex.AnalysisId));
