@@ -1,12 +1,10 @@
-﻿using DotnetVoyager.BLL.Dtos;
-using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.CSharp;
-using ICSharpCode.Decompiler.Metadata;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
+using DotnetVoyager.BLL.Factories;
 using Mono.Cecil;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
 
-namespace DotnetVoyager.BLL.Services;
+namespace DotnetVoyager.BLL.Services.Analyzers;
 
 public interface ICodeDecompilationService
 {
@@ -15,36 +13,25 @@ public interface ICodeDecompilationService
 
 public class CodeDecompilationService : ICodeDecompilationService
 {
+    private readonly IDecompilerFactory _decompilerFactory;
+
+    public CodeDecompilationService(IDecompilerFactory decompilerFactory)
+    {
+        _decompilerFactory = decompilerFactory;
+    }
+
     public Task<DecompiledCodeDto> DecompileCodeAsync(string assemblyPath, int token)
     {
         var handle = MetadataTokens.EntityHandle(token);
 
-        // Налаштовуємо resolver для роботи без залежностей
-        var resolver = new UniversalAssemblyResolver(
-            assemblyPath,
-            throwOnError: false,  // Не кидати виняток при відсутності залежностей
-            targetFramework: null
-        );
-
-        // Додаємо директорію з поточною збіркою
-        resolver.AddSearchDirectory(Path.GetDirectoryName(assemblyPath));
-
-        // Налаштовуємо DecompilerSettings
-        var settings = new DecompilerSettings
-        {
-            ThrowOnAssemblyResolveErrors = false  // Не падати при помилках резолвінгу
-        };
-
-        // Створюємо декомпілятор з налаштованим resolver
-        var decompiler = new CSharpDecompiler(assemblyPath, resolver, settings);
+        var decompiler = _decompilerFactory.Create(assemblyPath);
 
         var csharpCode = decompiler.DecompileAsString(handle);
 
-        // IL-код через Mono.Cecil
         string ilCode;
         var readerParameters = new ReaderParameters
         {
-            AssemblyResolver = new DefaultAssemblyResolver() // Cecil теж потребує resolver
+            AssemblyResolver = new DefaultAssemblyResolver()
         };
 
         var assembly = AssemblyDefinition.ReadAssembly(assemblyPath, readerParameters);

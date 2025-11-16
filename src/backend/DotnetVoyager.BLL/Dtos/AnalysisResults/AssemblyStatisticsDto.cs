@@ -1,6 +1,6 @@
-﻿namespace DotnetVoyager.BLL.Dtos;
+﻿namespace DotnetVoyager.BLL.Dtos.AnalysisResults;
 
-public class AssemblyStatisticsDto
+public record AssemblyStatisticsDto
 {
     public required int NamespaceCount { get; init; }
     public required int ClassCount { get; init; }

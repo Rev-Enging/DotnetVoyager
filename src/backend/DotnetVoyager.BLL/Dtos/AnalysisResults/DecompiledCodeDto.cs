@@ -1,4 +1,4 @@
-﻿namespace DotnetVoyager.BLL.Dtos;
+﻿namespace DotnetVoyager.BLL.Dtos.AnalysisResults;
 
 public class DecompiledCodeDto
 {

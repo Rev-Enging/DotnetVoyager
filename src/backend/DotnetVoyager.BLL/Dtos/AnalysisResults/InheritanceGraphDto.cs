@@ -1,6 +1,14 @@
-﻿using DotnetVoyager.BLL.Enums;
+﻿using System.Text.Json.Serialization;
 
-namespace DotnetVoyager.BLL.Dtos.Graph;
+namespace DotnetVoyager.BLL.Dtos.AnalysisResults;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum InheritanceGraphNodeType
+{
+    Class,
+    Interface,
+    Struct,
+}
 
 /// <summary>
 /// Represents the complete inheritance graph for the assembly.

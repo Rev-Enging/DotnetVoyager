@@ -1,33 +1,17 @@
-﻿using System.Reflection.Metadata;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
+using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 
-namespace DotnetVoyager.BLL.Services;
+namespace DotnetVoyager.BLL.Services.Analyzers;
 
-public class DependencyGraphDto
+public interface IAssemblyReferenceAnalyzer
 {
-    public string RootAssembly { get; set; }
-    public string Version { get; set; }
-    public string Culture { get; set; }
-    public string PublicKeyToken { get; set; }
-    public List<DependencyInfoDto> Dependencies { get; set; }
+    AssemblyDependenciesDto AnalyzeReferences(string assemblyPath);
 }
 
-public class DependencyInfoDto
+public class AssemblyReferenceAnalyzer : IAssemblyReferenceAnalyzer
 {
-    public string Name { get; set; }
-    public string Version { get; set; }
-    public string Culture { get; set; }
-    public string PublicKeyToken { get; set; }
-}
-
-public interface IDependencyAnalyzerService
-{
-    DependencyGraphDto AnalyzeAssemblyDependencies(string assemblyPath);
-}
-
-public class DependencyAnalyzerService : IDependencyAnalyzerService
-{
-    public DependencyGraphDto AnalyzeAssemblyDependencies(string assemblyPath)
+    public AssemblyDependenciesDto AnalyzeReferences(string assemblyPath)
     {
         using var fileStream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var peReader = new PEReader(fileStream);
@@ -39,16 +23,16 @@ public class DependencyAnalyzerService : IDependencyAnalyzerService
         var version = assemblyDef.Version;
         var culture = metadataReader.GetString(assemblyDef.Culture);
 
-        var graph = new DependencyGraphDto
+        var graph = new AssemblyDependenciesDto
         {
-            RootAssembly = assemblyName,
+            AssemblyName = assemblyName,
             Version = version.ToString(),
             Culture = string.IsNullOrEmpty(culture) ? "neutral" : culture,
             PublicKeyToken = GetPublicKeyTokenFromBlob(metadataReader.GetBlobBytes(assemblyDef.PublicKey)),
-            Dependencies = new List<DependencyInfoDto>()
+            References = new List<AssemblyReferenceDto>()
         };
 
-        // Отримуємо всі залежності
+        // Get all dependencies
         foreach (var assemblyRefHandle in metadataReader.AssemblyReferences)
         {
             var assemblyRef = metadataReader.GetAssemblyReference(assemblyRefHandle);
@@ -57,7 +41,7 @@ public class DependencyAnalyzerService : IDependencyAnalyzerService
             var refCulture = metadataReader.GetString(assemblyRef.Culture);
             var refPublicKeyToken = metadataReader.GetBlobBytes(assemblyRef.PublicKeyOrToken);
 
-            graph.Dependencies.Add(new DependencyInfoDto
+            graph.References.Add(new AssemblyReferenceDto
             {
                 Name = refName,
                 Version = refVersion.ToString(),
@@ -82,11 +66,11 @@ public class DependencyAnalyzerService : IDependencyAnalyzerService
         if (publicKey == null || publicKey.Length == 0)
             return "null";
 
-        // Якщо це вже токен (8 байтів)
+        // If it's already a token (8 bytes)
         if (publicKey.Length == 8)
             return GetPublicKeyToken(publicKey);
 
-        // Якщо це повний публічний ключ, обчислюємо токен
+        // If it's a full public key, calculate the token
         using var sha1 = System.Security.Cryptography.SHA1.Create();
         var hash = sha1.ComputeHash(publicKey);
         var token = hash.Skip(hash.Length - 8).Reverse().ToArray();

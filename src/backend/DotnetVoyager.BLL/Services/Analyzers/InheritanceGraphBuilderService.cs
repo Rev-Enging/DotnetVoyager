@@ -1,14 +1,13 @@
-﻿using DotnetVoyager.BLL.Dtos.Graph;
-using DotnetVoyager.BLL.Enums;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using DotnetVoyager.BLL.Factories;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using System.Reflection.Metadata.Ecma335;
 
-namespace DotnetVoyager.BLL.Services;
+namespace DotnetVoyager.BLL.Services.Analyzers;
 
-public interface IInheritanceGraphService
+public interface IInheritanceGraphBuilderService
 {
     Task<InheritanceGraphDto> BuildGraphAsync(string assemblyPath);
 }
@@ -17,11 +16,11 @@ public interface IInheritanceGraphService
 /// A stateless service responsible for building the inheritance graph.
 /// It uses a stateful, short-lived GraphBuilder for each operation.
 /// </summary>
-public class InheritanceGraphService : IInheritanceGraphService
+public class InheritanceGraphBuilderService : IInheritanceGraphBuilderService
 {
     private readonly IDecompilerFactory _decompilerFactory;
 
-    public InheritanceGraphService(IDecompilerFactory decompilerFactory)
+    public InheritanceGraphBuilderService(IDecompilerFactory decompilerFactory)
     {
         _decompilerFactory = decompilerFactory;
     }

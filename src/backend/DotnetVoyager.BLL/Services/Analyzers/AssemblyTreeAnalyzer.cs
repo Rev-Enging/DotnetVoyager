@@ -1,15 +1,14 @@
-﻿using DotnetVoyager.BLL.Dtos;
-using DotnetVoyager.BLL.Enums;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using Mono.Cecil;
 
-namespace DotnetVoyager.BLL.Services;
+namespace DotnetVoyager.BLL.Services.Analyzers;
 
-public interface IStructureAnalyzerService
+public interface IAssemblyTreeAnalyzer
 {
-    Task<StructureNodeDto> AnalyzeStructureAsync(string assemblyPath);
+    Task<AssemblyTreeDto> AnalyzeAssemblyTreeAsync(string assemblyPath);
 }
 
-public class StructureAnalyzerService : IStructureAnalyzerService
+public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
 {
     private const string NoNamespace = "[No Namespace]";
 
@@ -19,16 +18,22 @@ public class StructureAnalyzerService : IStructureAnalyzerService
     // Namespace does not have a metadata token, so we use a constant value
     private const int NamespaceToken = 0;
 
-    public Task<StructureNodeDto> AnalyzeStructureAsync(string assemblyPath)
+    public Task<AssemblyTreeDto> AnalyzeAssemblyTreeAsync(string assemblyPath)
     {
         return Task.Run(() =>
         {
             using var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
-            return AnalyzeAssembly(assembly);
+
+            var rootNode = AnalyzeAssembly(assembly);
+
+            return new AssemblyTreeDto
+            {
+                Root = rootNode
+            };
         });
     }
 
-    private StructureNodeDto AnalyzeAssembly(AssemblyDefinition assembly)
+    private AssemblyTreeNodeDto AnalyzeAssembly(AssemblyDefinition assembly)
     {
         var namespaceNodes = assembly.MainModule.Types
             .Where(t => t.IsPublic)
@@ -37,49 +42,49 @@ public class StructureAnalyzerService : IStructureAnalyzerService
             .OrderBy(n => n.Name)
             .ToList();
 
-        return new StructureNodeDto
+        return new AssemblyTreeNodeDto
         {
             Name = assembly.Name.Name,
-            Type = StructureNodeType.Assembly,
+            Type = AssemblyTreeNodeType.Assembly,
             Token = AssemblyToken,
             Children = namespaceNodes.Any() ? namespaceNodes : null
         };
     }
 
-    private StructureNodeDto AnalyzeNamespace(IGrouping<string, TypeDefinition> namespaceGroup)
+    private AssemblyTreeNodeDto AnalyzeNamespace(IGrouping<string, TypeDefinition> namespaceGroup)
     {
         var typeNodes = namespaceGroup
             .Select(AnalyzeTypeDefinition)
             .OrderBy(t => t.Name)
             .ToList();
 
-        return new StructureNodeDto
+        return new AssemblyTreeNodeDto
         {
             Name = namespaceGroup.Key,
-            Type = StructureNodeType.Namespace,
+            Type = AssemblyTreeNodeType.Namespace,
             Token = NamespaceToken,
             Children = typeNodes.Any() ? typeNodes : null
         };
     }
 
-    private StructureNodeDto AnalyzeTypeDefinition(TypeDefinition type)
+    private AssemblyTreeNodeDto AnalyzeTypeDefinition(TypeDefinition type)
     {
         var methodNodes = type.Methods
             .Where(m => !m.IsConstructor && !m.IsSpecialName)
-            .Select(m => new StructureNodeDto
+            .Select(m => new AssemblyTreeNodeDto
             {
                 Name = m.Name,
-                Type = StructureNodeType.Method,
+                Type = AssemblyTreeNodeType.Method,
                 Token = m.MetadataToken.ToInt32(),
                 Children = null
             })
             .OrderBy(m => m.Name);
 
         var propertyNodes = type.Properties
-            .Select(p => new StructureNodeDto
+            .Select(p => new AssemblyTreeNodeDto
             {
                 Name = p.Name,
-                Type = StructureNodeType.Property,
+                Type = AssemblyTreeNodeType.Property,
                 Token = p.MetadataToken.ToInt32(),
                 Children = null
             })
@@ -87,7 +92,7 @@ public class StructureAnalyzerService : IStructureAnalyzerService
 
         var children = propertyNodes.Concat(methodNodes).ToList();
 
-        return new StructureNodeDto
+        return new AssemblyTreeNodeDto
         {
             Name = type.Name,
             Type = GetNodeType(type),
@@ -96,17 +101,17 @@ public class StructureAnalyzerService : IStructureAnalyzerService
         };
     }
 
-    private static StructureNodeType GetNodeType(TypeDefinition type)
+    private static AssemblyTreeNodeType GetNodeType(TypeDefinition type)
     {
         if (type.IsInterface)
-            return StructureNodeType.Interface;
+            return AssemblyTreeNodeType.Interface;
 
         if (type.IsValueType)
-            return StructureNodeType.Struct;
+            return AssemblyTreeNodeType.Struct;
 
         if (type.IsClass)
-            return StructureNodeType.Class;
+            return AssemblyTreeNodeType.Class;
 
-        return StructureNodeType.Class;
+        return AssemblyTreeNodeType.Class;
     }
 }

@@ -1,8 +1,8 @@
-﻿using DotnetVoyager.BLL.Dtos;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 
-namespace DotnetVoyager.BLL.Services;
+namespace DotnetVoyager.BLL.Services.Analyzers;
 
 public interface IMetadataReaderService
 {

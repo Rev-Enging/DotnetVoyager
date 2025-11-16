@@ -1,6 +1,6 @@
-﻿namespace DotnetVoyager.BLL.Dtos;
+﻿namespace DotnetVoyager.BLL.Dtos.AnalysisResults;
 
-public class AssemblyMetadataDto
+public record AssemblyMetadataDto
 {
     public required string AssemblyName { get; init; }
     public required string Version { get; init; }
