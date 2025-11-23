@@ -1,87 +1,27 @@
 ﻿using DotnetVoyager.BLL.Constants;
 using DotnetVoyager.BLL.Dtos.AnalysisResults;
-using DotnetVoyager.BLL.Errors;
-using DotnetVoyager.BLL.Exceptions;
-using DotnetVoyager.BLL.Services;
-using DotnetVoyager.DAL.Enums;
+using DotnetVoyager.BLL.MediatR.Queries.Common;
 using FluentResults;
 using MediatR;
-using Microsoft.Extensions.Logging;
 
-namespace DotnetVoyager.BLL.MediatR.Queries.GetMetadata;
-
-public record GetMetadataQuery(string AnalysisId) : IRequest<Result<AssemblyMetadataDto>>;
-
-public class GetMetadataHandler : IRequestHandler<GetMetadataQuery, Result<AssemblyMetadataDto>>
+namespace DotnetVoyager.BLL.MediatR.Queries.GetMetadata
 {
-    private readonly IStorageService _storageService;
-    private readonly IAnalysisStatusService _statusService;
-    private readonly ILogger<GetMetadataHandler> _logger;
+    public record GetMetadataQuery(string AnalysisId) : IRequest<Result<AssemblyMetadataDto>>;
 
-    public GetMetadataHandler(
-        IStorageService storageService,
-        IAnalysisStatusService statusService,
-        ILogger<GetMetadataHandler> logger)
+    public class GetMetadataHandler(IMediator mediator) : IRequestHandler<GetMetadataQuery, Result<AssemblyMetadataDto>>
     {
-        _storageService = storageService;
-        _statusService = statusService;
-        _logger = logger;
-    }
+        private readonly IMediator _mediator = mediator;
 
-    public async Task<Result<AssemblyMetadataDto>> Handle(
-        GetMetadataQuery request,
-        CancellationToken cancellationToken)
-    {
-        try
+        public Task<Result<AssemblyMetadataDto>> Handle(
+            GetMetadataQuery request,
+            CancellationToken cancellationToken)
         {
-            const string stepName = AnalysisStepNames.Metadata;
-            const string fileName = ProjectConstants.AnalysisMetadataFileName;
-
-            var stepStatus = await _statusService.GetStepStatusAsync(
-                request.AnalysisId,
-                stepName,
+            return _mediator.Send(
+                new GetAnalysisResultQuery<AssemblyMetadataDto>(
+                    request.AnalysisId,
+                    AnalysisStepNames.Metadata,
+                    ProjectConstants.AnalysisMetadataFileName),
                 cancellationToken);
-
-            if (stepStatus.Status == AnalysisStepStatus.Failed)
-            {
-                return Result.Fail(new StepFailedError(
-                    stepName,
-                    stepStatus.ErrorMessage));
-            }
-
-            if (stepStatus.Status != AnalysisStepStatus.Completed)
-            {
-                return Result.Fail(new StepNotCompletedError(
-                    stepName,
-                    stepStatus.Status,
-                    stepStatus.ErrorMessage));
-            }
-
-            var metadataDto = await _storageService.ReadDataAsync<AssemblyMetadataDto>(
-                request.AnalysisId,
-                fileName,
-                cancellationToken);
-
-            if (metadataDto == null)
-            {
-                _logger.LogError(
-                    "Metadata file missing for completed analysis {AnalysisId}",
-                    request.AnalysisId);
-
-                return Result.Fail(new Error(
-                    "Internal error: Metadata step completed but file is missing."));
-            }
-
-            return Result.Ok(metadataDto);
-        }
-        catch (AnalysisNotFoundException ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Metadata requested for non-existent analysis: {AnalysisId}",
-                ex.AnalysisId);
-
-            return Result.Fail(new AnalysisNotFound(ex.AnalysisId));
         }
     }
 }

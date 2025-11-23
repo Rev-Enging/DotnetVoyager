@@ -3,7 +3,7 @@ using FluentResults;
 
 namespace DotnetVoyager.BLL.Errors;
 
-public class StepNotCompletedError : Error
+public sealed class StepNotCompletedError : Error
 {
     public string StepName { get; }
     public AnalysisStepStatus CurrentStatus { get; }

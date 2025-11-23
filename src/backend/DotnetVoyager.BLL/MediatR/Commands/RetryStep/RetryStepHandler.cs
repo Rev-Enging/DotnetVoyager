@@ -51,10 +51,9 @@ public class RetryStepHandler : IRequestHandler<RetryStepCommand, Result>
 
             if (stepStatus.Status != AnalysisStepStatus.Failed)
             {
-                return Result.Fail(new Error(
-                    $"Step '{request.StepName}' cannot be retried. " +
-                    $"Current status: {stepStatus.Status}. " +
-                    $"Only failed steps can be retried."));
+                return Result.Fail(new StepCannotBeRetriedError(
+                    request.StepName,
+                    stepStatus.Status));
             }
 
             bool reset = await _stepService.ResetStepForRetryAsync(
@@ -91,7 +90,8 @@ public class RetryStepHandler : IRequestHandler<RetryStepCommand, Result>
                 ex,
                 "Retry requested for non-existent step {StepName} in analysis: {AnalysisId}",
                 request.StepName, request.AnalysisId);
-            return Result.Fail(new Error($"Step not exist: {request.StepName}"));
+
+            return Result.Fail(new Error($"Step does not exist: {request.StepName}"));
         }
     }
 }

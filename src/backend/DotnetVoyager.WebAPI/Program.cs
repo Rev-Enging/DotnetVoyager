@@ -57,6 +57,7 @@ builder.Services.AddSingleton<IAnalysisTaskQueue, AnalysisTaskQueue>();
 
 // ==================== BACKGROUND WORKERS ====================
 builder.Services.AddHostedService<AnalysisWorkerService>();
+builder.Services.AddHostedService<StorageCleanupWorker>();
 
 // ==================== MEDIATR ====================
 builder.Services.AddMediatR(cfg =>

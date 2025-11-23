@@ -1,4 +1,6 @@
-﻿namespace DotnetVoyager.BLL.Constants;
+﻿using DotnetVoyager.BLL.Enums;
+
+namespace DotnetVoyager.BLL.Constants;
 
 public static class ProjectConstants
 {
@@ -66,4 +68,10 @@ public static class AnalysisStepNames
 
     public static IEnumerable<string> GetAllSteps()
         => RequiredSteps.Append(ZipGeneration);
+
+    public static string ToStepName(this AnalysisStepName stepName)
+    => stepName.ToString();
+
+    public static AnalysisStepName? ToStepEnum(string stepName)
+        => Enum.TryParse<AnalysisStepName>(stepName, out var result) ? result : null;
 }

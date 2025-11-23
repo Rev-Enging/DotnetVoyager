@@ -3,17 +3,19 @@ using DotnetVoyager.BLL.Dtos;
 using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.MediatR.Commands.PrepareZip;
+using DotnetVoyager.BLL.MediatR.Commands.RetryStep;
 using DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
 using DotnetVoyager.BLL.MediatR.Queries.GetAssemblyDependencies;
+using DotnetVoyager.BLL.MediatR.Queries.GetAssemblyTree;
 using DotnetVoyager.BLL.MediatR.Queries.GetDecompiledCode;
 using DotnetVoyager.BLL.MediatR.Queries.GetFullDecompiledCodeInZip;
 using DotnetVoyager.BLL.MediatR.Queries.GetInheritanceGraph;
 using DotnetVoyager.BLL.MediatR.Queries.GetMetadata;
 using DotnetVoyager.BLL.MediatR.Queries.GetStatistic;
 using DotnetVoyager.BLL.MediatR.Queries.GetStatus;
-using DotnetVoyager.BLL.MediatR.Queries.GetStructure;
 using DotnetVoyager.WebAPI.Dtos;
 using DotnetVoyager.WebAPI.Exensions;
+using FluentResults;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,15 +23,9 @@ namespace DotnetVoyager.WebAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController : ControllerBase
+public class AnalysisController(IMediator mediator) : ControllerBase
 {
-    private readonly IMediator _mediator;
-
-    public AnalysisController(
-        IMediator mediator)
-    {
-        _mediator = mediator;
-    }
+    private readonly IMediator _mediator = mediator;
 
     [HttpPost("upload")]
     [Consumes("multipart/form-data")]
@@ -58,10 +54,7 @@ public class AnalysisController : ControllerBase
             return HandleValidationError(result.GetError<ValidationError>()!);
         }
 
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        return HandleGenericError(result);
     }
 
     [HttpGet("{analysisId:guid}/status")]
@@ -70,15 +63,30 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetStatus(string analysisId, CancellationToken cancellationToken)
     {
-        var query = new GetStatusQuery(analysisId);
-        var result = await _mediator.Send(query, cancellationToken);
+        var result = await _mediator.Send(new GetStatusQuery(analysisId), cancellationToken);
+        return HandleResultWithNotFound(result);
+    }
+
+    [HttpPost("{analysisId:guid}/retry")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> RetryStep(
+    string analysisId,
+    [FromBody] RetryStepRequestDto request,
+    CancellationToken cancellationToken)
+    {
+        var command = new RetryStepCommand(analysisId, request.StepName.ToString());
+        var result = await _mediator.Send(command, cancellationToken);
 
         if (result.IsSuccess)
         {
-            return Ok(result.Value);
+            return Accepted();
         }
 
-        if (result.HasError<NotFoundError>(out var notFoundErrors))
+        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
         {
             return Problem(
                 detail: notFoundErrors.First().Message,
@@ -86,10 +94,23 @@ public class AnalysisController : ControllerBase
             );
         }
 
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        if (result.HasError<StepNotProcessedError>(out var notProcessedErrors))
+        {
+            return Problem(
+                detail: notProcessedErrors.First().Message,
+                statusCode: StatusCodes.Status400BadRequest
+            );
+        }
+
+        if (result.HasError<StepCannotBeRetriedError>(out var cannotRetryErrors))
+        {
+            return Problem(
+                detail: cannotRetryErrors.First().Message,
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        return HandleGenericError(result);
     }
 
     [HttpGet("{analysisId:guid}/metadata")]
@@ -98,42 +119,8 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetMetadata(string analysisId, CancellationToken cancellationToken)
     {
-        var query = new GetMetadataQuery(analysisId);
-        var result = await _mediator.Send(query, cancellationToken);
-
-        if (result.IsSuccess)
-        {
-            return Ok(result.Value);
-        }
-
-        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
-        {
-            return Problem(
-                detail: notFoundErrors.First().Message,
-                statusCode: StatusCodes.Status404NotFound
-            );
-        }
-
-        if (result.HasError<StepNotCompletedError>(out var notCompletedErrors))
-        {
-            return Problem(
-                detail: notCompletedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        if (result.HasError<StepFailedError>(out var failedErrors))
-        {
-            return Problem(
-                detail: failedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        var result = await _mediator.Send(new GetMetadataQuery(analysisId), cancellationToken);
+        return HandleAnalysisResultWithStepErrors(result);
     }
 
     [HttpGet("{analysisId:guid}/statistics")]
@@ -142,42 +129,8 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetStatistics(string analysisId, CancellationToken cancellationToken)
     {
-        var query = new GetStatisticQuery(analysisId);
-        var result = await _mediator.Send(query, cancellationToken);
-
-        if (result.IsSuccess)
-        {
-            return Ok(result.Value);
-        }
-
-        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
-        {
-            return Problem(
-                detail: notFoundErrors.First().Message,
-                statusCode: StatusCodes.Status404NotFound
-            );
-        }
-
-        if (result.HasError<StepNotCompletedError>(out var notCompletedErrors))
-        {
-            return Problem(
-                detail: notCompletedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        if (result.HasError<StepFailedError>(out var failedErrors))
-        {
-            return Problem(
-                detail: failedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        var result = await _mediator.Send(new GetStatisticQuery(analysisId), cancellationToken);
+        return HandleAnalysisResultWithStepErrors(result);
     }
 
     [HttpGet("{analysisId:guid}/dependencies")]
@@ -186,42 +139,8 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetAssemblyDependencies(string analysisId, CancellationToken cancellationToken)
     {
-        var query = new GetAssemblyDependenciesQuery(analysisId);
-        var result = await _mediator.Send(query, cancellationToken);
-
-        if (result.IsSuccess)
-        {
-            return Ok(result.Value);
-        }
-
-        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
-        {
-            return Problem(
-                detail: notFoundErrors.First().Message,
-                statusCode: StatusCodes.Status404NotFound
-            );
-        }
-
-        if (result.HasError<StepNotCompletedError>(out var notCompletedErrors))
-        {
-            return Problem(
-                detail: notCompletedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        if (result.HasError<StepFailedError>(out var failedErrors))
-        {
-            return Problem(
-                detail: failedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        var result = await _mediator.Send(new GetAssemblyDependenciesQuery(analysisId), cancellationToken);
+        return HandleAnalysisResultWithStepErrors(result);
     }
 
     [HttpGet("{analysisId:guid}/assembly-tree")]
@@ -230,42 +149,8 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetAssemblyTree(string analysisId, CancellationToken cancellationToken)
     {
-        var query = new GetAssemblyTreeQuery(analysisId);
-        var result = await _mediator.Send(query, cancellationToken);
-
-        if (result.IsSuccess)
-        {
-            return Ok(result.Value);
-        }
-
-        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
-        {
-            return Problem(
-                detail: notFoundErrors.First().Message,
-                statusCode: StatusCodes.Status404NotFound
-            );
-        }
-
-        if (result.HasError<StepNotCompletedError>(out var notCompletedErrors))
-        {
-            return Problem(
-                detail: notCompletedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        if (result.HasError<StepFailedError>(out var failedErrors))
-        {
-            return Problem(
-                detail: failedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        var result = await _mediator.Send(new GetAssemblyTreeQuery(analysisId), cancellationToken);
+        return HandleAnalysisResultWithStepErrors(result);
     }
 
     [HttpGet("{analysisId}/inheritance-graph")]
@@ -274,42 +159,8 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetInheritanceGraph(string analysisId, CancellationToken cancellationToken)
     {
-        var query = new GetInheritanceGraphQuery(analysisId);
-        var result = await _mediator.Send(query, cancellationToken);
-
-        if (result.IsSuccess)
-        {
-            return Ok(result.Value);
-        }
-
-        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
-        {
-            return Problem(
-                detail: notFoundErrors.First().Message,
-                statusCode: StatusCodes.Status404NotFound
-            );
-        }
-
-        if (result.HasError<StepNotCompletedError>(out var notCompletedErrors))
-        {
-            return Problem(
-                detail: notCompletedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        if (result.HasError<StepFailedError>(out var failedErrors))
-        {
-            return Problem(
-                detail: failedErrors.First().Message,
-                statusCode: StatusCodes.Status409Conflict
-            );
-        }
-
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        var result = await _mediator.Send(new GetInheritanceGraphQuery(analysisId), cancellationToken);
+        return HandleAnalysisResultWithStepErrors(result);
     }
 
     [HttpGet("{analysisId:guid}/decompile/{lookupToken:int}")]
@@ -318,26 +169,8 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetDecompiledCode(string analysisId, int lookupToken, CancellationToken cancellationToken)
     {
-        var query = new GetDecompiledCodeQuery(analysisId, lookupToken);
-        var result = await _mediator.Send(query, cancellationToken);
-
-        if (result.IsSuccess)
-        {
-            return Ok(result.Value);
-        }
-
-        if (result.HasError<NotFoundError>(out var notFoundErrors))
-        {
-            return Problem(
-                detail: notFoundErrors.First().Message,
-                statusCode: StatusCodes.Status404NotFound
-            );
-        }
-
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        var result = await _mediator.Send(new GetDecompiledCodeQuery(analysisId, lookupToken), cancellationToken);
+        return HandleResultWithNotFound(result);
     }
 
     [HttpPost("{analysisId:guid}/prepare-zip")]
@@ -346,8 +179,7 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> PrepareZip(string analysisId, CancellationToken cancellationToken)
     {
-        var command = new PrepareZipCommand(analysisId);
-        var result = await _mediator.Send(command, cancellationToken);
+        var result = await _mediator.Send(new PrepareZipCommand(analysisId), cancellationToken);
 
         if (result.IsSuccess)
         {
@@ -362,10 +194,7 @@ public class AnalysisController : ControllerBase
             );
         }
 
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        return HandleGenericError(result);
     }
 
     [HttpGet("{analysisId:guid}/download-zip")]
@@ -374,13 +203,11 @@ public class AnalysisController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> DownloadZip(string analysisId, CancellationToken cancellationToken)
     {
-        var command = new DownloadZipQuery(analysisId);
-        var result = await _mediator.Send(command, cancellationToken);
+        var result = await _mediator.Send(new DownloadZipQuery(analysisId), cancellationToken);
 
         if (result.IsSuccess)
         {
             var dto = result.Value;
-
             return new FileStreamResult(dto.FileStream, dto.ContentType)
             {
                 FileDownloadName = dto.FileDownloadName
@@ -395,11 +222,10 @@ public class AnalysisController : ControllerBase
             );
         }
 
-        return Problem(
-            detail: result.Errors.FirstOrDefault()?.Message,
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        return HandleGenericError(result);
     }
+
+    // ==================== PRIVATE HELPER METHODS ====================
 
     private IActionResult HandleValidationError(ValidationError validationError)
     {
@@ -411,5 +237,65 @@ public class AnalysisController : ControllerBase
             );
 
         return ValidationProblem(new ValidationProblemDetails(errors));
+    }
+
+    private IActionResult HandleResultWithNotFound<T>(Result<T> result)
+    {
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+
+        if (result.HasError<NotFoundError>(out var notFoundErrors))
+        {
+            return Problem(
+                detail: notFoundErrors.First().Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        return HandleGenericError(result);
+    }
+
+    private IActionResult HandleAnalysisResultWithStepErrors<T>(Result<T> result)
+    {
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+
+        if (result.HasError<AnalysisNotFound>(out var notFoundErrors))
+        {
+            return Problem(
+                detail: notFoundErrors.First().Message,
+                statusCode: StatusCodes.Status404NotFound
+            );
+        }
+
+        if (result.HasError<StepNotCompletedError>(out var notCompletedErrors))
+        {
+            return Problem(
+                detail: notCompletedErrors.First().Message,
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        if (result.HasError<StepFailedError>(out var failedErrors))
+        {
+            return Problem(
+                detail: failedErrors.First().Message,
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        return HandleGenericError(result);
+    }
+
+    private IActionResult HandleGenericError(ResultBase result)
+    {
+        return Problem(
+            detail: result.Errors.FirstOrDefault()?.Message,
+            statusCode: StatusCodes.Status500InternalServerError
+        );
     }
 }

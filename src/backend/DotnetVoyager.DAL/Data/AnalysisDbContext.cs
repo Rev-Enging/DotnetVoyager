@@ -17,6 +17,13 @@ public class AnalysisDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // Configure relationship with cascade delete
+        modelBuilder.Entity<AnalysisStatus>()
+            .HasMany(a => a.Steps)
+            .WithOne(s => s.Analysis)
+            .HasForeignKey(s => s.AnalysisId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Ensure one step per name per analysis
         modelBuilder.Entity<AnalysisStep>()
             .HasIndex(s => new { s.AnalysisId, s.StepName })
@@ -25,5 +32,9 @@ public class AnalysisDbContext : DbContext
         // Index for querying pending steps
         modelBuilder.Entity<AnalysisStep>()
             .HasIndex(s => new { s.Status, s.AnalysisId });
+
+        // Index for cleanup queries (by LastUpdatedUtc)
+        modelBuilder.Entity<AnalysisStatus>()
+            .HasIndex(a => a.LastUpdatedUtc);
     }
 }
