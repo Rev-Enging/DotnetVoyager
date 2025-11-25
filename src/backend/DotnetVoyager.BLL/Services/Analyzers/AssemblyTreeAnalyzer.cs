@@ -21,29 +21,25 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
     {
         return Task.Run(() =>
         {
-            // Optimization: Use FileStream with FileShare.Read | FileShare.Delete.
-            // This prevents loading the entire file into RAM and avoids locking the file 
-            // against the background cleanup service.
             using var stream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             using var peReader = new PEReader(stream);
 
             if (!peReader.HasMetadata)
             {
-                // In a real scenario, you might want to return an error DTO or throw a custom exception
                 throw new InvalidOperationException("The provided file does not contain CLI metadata.");
             }
 
             var reader = peReader.GetMetadataReader();
-
-            // Optimization: Use Dictionary for grouping instead of LINQ GroupBy to reduce memory allocations.
             var namespaceGroups = new Dictionary<string, List<AssemblyTreeNodeDto>>();
 
-            // Iterate over all type definitions using handles
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var typeDef = reader.GetTypeDefinition(typeHandle);
 
-                // Determine namespace
+                // ФІЛЬТР: Пропускаємо compiler-generated типи
+                if (IsCompilerGenerated(reader, typeDef))
+                    continue;
+
                 string ns = GetNamespace(reader, typeDef);
 
                 if (!namespaceGroups.TryGetValue(ns, out var list))
@@ -52,16 +48,13 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
                     namespaceGroups.Add(ns, list);
                 }
 
-                // FIX: Pass the typeHandle explicitly to avoid the "missing Handle property" error
                 list.Add(CreateTypeNode(reader, typeDef, typeHandle));
             }
 
-            // Construct the final tree structure
             var rootChildren = new List<AssemblyTreeNodeDto>(namespaceGroups.Count);
 
             foreach (var kvp in namespaceGroups)
             {
-                // Sort types within the namespace alphabetically
                 kvp.Value.Sort((x, y) => string.Compare(x.Name, y.Name, StringComparison.Ordinal));
 
                 rootChildren.Add(new AssemblyTreeNodeDto
@@ -73,10 +66,8 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
                 });
             }
 
-            // Sort namespaces alphabetically
             rootChildren.Sort((x, y) => string.Compare(x.Name, y.Name, StringComparison.Ordinal));
 
-            // Get Assembly Name safely
             var assemblyDef = reader.GetAssemblyDefinition();
             string assemblyName = reader.GetString(assemblyDef.Name);
 
@@ -97,51 +88,104 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
     {
         var children = new List<AssemblyTreeNodeDto>();
 
-        // 1. Process Methods
+        // Process Methods
         foreach (var methodHandle in typeDef.GetMethods())
         {
             var method = reader.GetMethodDefinition(methodHandle);
 
-            // Filter: Skip special methods (getters, setters, constructors) to keep the tree clean.
-            // If you want to see constructors, remove the check for RTSpecialName.
+            // Фільтруємо спеціальні методи та compiler-generated
             var attributes = method.Attributes;
             if ((attributes & MethodAttributes.SpecialName) != 0 ||
                 (attributes & MethodAttributes.RTSpecialName) != 0)
                 continue;
 
+            // ДОДАТКОВИЙ ФІЛЬТР: пропускаємо compiler-generated методи
+            string methodName = reader.GetString(method.Name);
+            if (IsCompilerGeneratedName(methodName))
+                continue;
+
             children.Add(new AssemblyTreeNodeDto
             {
-                Name = reader.GetString(method.Name),
+                Name = methodName,
                 Type = AssemblyTreeNodeType.Method,
                 Token = MetadataTokens.GetToken(methodHandle),
                 Children = null
             });
         }
 
-        // 2. Process Properties
+        // Process Properties
         foreach (var propHandle in typeDef.GetProperties())
         {
             var prop = reader.GetPropertyDefinition(propHandle);
+            string propName = reader.GetString(prop.Name);
+
+            // ФІЛЬТР: пропускаємо compiler-generated властивості
+            if (IsCompilerGeneratedName(propName))
+                continue;
+
             children.Add(new AssemblyTreeNodeDto
             {
-                Name = reader.GetString(prop.Name),
+                Name = propName,
                 Type = AssemblyTreeNodeType.Property,
                 Token = MetadataTokens.GetToken(propHandle),
                 Children = null
             });
         }
 
-        // Sort members (methods and properties mixed) alphabetically
         children.Sort((x, y) => string.Compare(x.Name, y.Name, StringComparison.Ordinal));
 
         return new AssemblyTreeNodeDto
         {
             Name = reader.GetString(typeDef.Name),
             Type = GetNodeType(typeDef.Attributes),
-            // FIX: Use the explicitly passed handle converted to an integer token
             Token = MetadataTokens.GetToken(typeHandle),
             Children = children.Count > 0 ? children : null
         };
+    }
+
+    private static bool IsCompilerGenerated(MetadataReader reader, TypeDefinition typeDef)
+    {
+        string typeName = reader.GetString(typeDef.Name);
+
+        // Перевіряємо типові патерни compiler-generated типів
+        if (IsCompilerGeneratedName(typeName))
+            return true;
+
+        // Додаткова перевірка через атрибути
+        foreach (var attrHandle in typeDef.GetCustomAttributes())
+        {
+            var attr = reader.GetCustomAttribute(attrHandle);
+            var attrCtor = attr.Constructor;
+
+            if (attrCtor.Kind == HandleKind.MemberReference)
+            {
+                var memberRef = reader.GetMemberReference((MemberReferenceHandle)attrCtor);
+                var typeRef = reader.GetTypeReference((TypeReferenceHandle)memberRef.Parent);
+                string attrTypeName = reader.GetString(typeRef.Name);
+
+                if (attrTypeName == "CompilerGeneratedAttribute")
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsCompilerGeneratedName(string name)
+    {
+        // Compiler-generated типи та члени мають характерні імена:
+        // - Починаються з '<' або '<>'
+        // - Містять '>' в імені
+        // - Анонімні типи: <>f__AnonymousType
+        // - Closure класи: <>c__DisplayClass
+        // - Lambda кеш: <>c
+        // - Iterator/async state machines: <MethodName>d__
+
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        return name.StartsWith("<>") ||
+               (name.Contains('<') && name.Contains('>'));
     }
 
     private static string GetNamespace(MetadataReader reader, TypeDefinition typeDef)
@@ -152,14 +196,8 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
 
     private static AssemblyTreeNodeType GetNodeType(TypeAttributes attributes)
     {
-        // Check for Interface
         if ((attributes & TypeAttributes.Interface) != 0)
             return AssemblyTreeNodeType.Interface;
-
-        // Note: Determining strictly if a type is a "Struct" (ValueType) using only MetadataReader 
-        // without resolving references is complex because we need to check the BaseType.
-        // For a high-performance tree view, assuming Class (or checking Sealed + SequentialLayout as a heuristic) 
-        // is usually sufficient.
 
         return AssemblyTreeNodeType.Class;
     }
