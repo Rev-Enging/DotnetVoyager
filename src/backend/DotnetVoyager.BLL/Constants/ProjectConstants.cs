@@ -51,8 +51,7 @@ public static class AnalysisStepNames
         Statistics,
         AssemblyTree,
         AssemblyDependencies,
-        InheritanceGraph,
-        ZipGeneration
+        InheritanceGraph
     ];
 
     public static bool IsValidStep(string stepName)
