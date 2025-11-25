@@ -36,6 +36,8 @@ namespace DotnetVoyager.DAL.Migrations
 
                     b.HasKey("AnalysisId");
 
+                    b.HasIndex("LastUpdatedUtc");
+
                     b.ToTable("AnalysisStatuses");
                 });
 

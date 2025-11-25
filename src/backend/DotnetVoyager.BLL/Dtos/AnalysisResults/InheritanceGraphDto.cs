@@ -8,6 +8,7 @@ public enum InheritanceGraphNodeType
     Class,
     Interface,
     Struct,
+    Enum,
 }
 
 /// <summary>

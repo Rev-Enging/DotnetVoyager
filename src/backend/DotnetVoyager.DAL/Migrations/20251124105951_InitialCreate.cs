@@ -52,6 +52,11 @@ namespace DotnetVoyager.DAL.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_AnalysisStatuses_LastUpdatedUtc",
+                table: "AnalysisStatuses",
+                column: "LastUpdatedUtc");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AnalysisSteps_AnalysisId_StepName",
                 table: "AnalysisSteps",
                 columns: new[] { "AnalysisId", "StepName" },

@@ -1,4 +1,148 @@
 ﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
+using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.Decompiler.TypeSystem;
+using System.Reflection.Metadata.Ecma335;
+
+namespace DotnetVoyager.BLL.Services.Analyzers;
+
+public interface IInheritanceGraphBuilderService
+{
+    Task<InheritanceGraphDto> BuildGraphAsync(string assemblyPath);
+}
+
+public class InheritanceGraphBuilderService : IInheritanceGraphBuilderService
+{
+    public Task<InheritanceGraphDto> BuildGraphAsync(string assemblyPath)
+    {
+        // Optimization 1: Use FileStream + PEFile directly.
+        // We do NOT need the full CSharpDecompiler here, just the TypeSystem.
+        using var stream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        using var peFile = new PEFile(assemblyPath, stream);
+
+        // Create a resolver that doesn't throw on missing dependencies
+        var resolver = new UniversalAssemblyResolver(assemblyPath, false, peFile.DetectTargetFrameworkId());
+
+        // Optimization 2: Initialize DecompilerTypeSystem.
+        // This parses the class structure without preparing for code decompilation.
+        var typeSystem = new DecompilerTypeSystem(peFile, resolver);
+
+        var builder = new GraphBuilder(typeSystem.MainModule);
+        var edges = new List<InheritanceGraphEdgeDto>();
+
+        foreach (var typeDef in typeSystem.MainModule.TypeDefinitions)
+        {
+            // Skip compiler-generated types (like <>c, <Main>d__) to keep the graph clean
+            if (typeDef.IsCompilerGenerated()) continue;
+
+            var sourceId = builder.GetOrCreateNode(typeDef);
+
+            foreach (var baseType in typeDef.DirectBaseTypes)
+            {
+                // Optimization 3: Fast check to skip System.Object
+                if (baseType.IsKnownType(KnownTypeCode.Object)) continue;
+
+                var targetId = builder.GetOrCreateNode(baseType);
+
+                edges.Add(new InheritanceGraphEdgeDto
+                {
+                    Id = $"{sourceId}_{targetId}",
+                    Source = sourceId,
+                    Target = targetId
+                });
+            }
+        }
+
+        var result = new InheritanceGraphDto
+        {
+            Nodes = builder.GetNodes(),
+            Edges = edges
+        };
+
+        return Task.FromResult(result);
+    }
+
+    private sealed class GraphBuilder
+    {
+        private readonly Dictionary<string, InheritanceGraphNodeDto> _nodes = new();
+        private readonly IModule _mainModule;
+
+        public GraphBuilder(IModule mainModule)
+        {
+            _mainModule = mainModule;
+        }
+
+        public List<InheritanceGraphNodeDto> GetNodes()
+            => _nodes.Values.OrderBy(n => n.ShortName).ToList();
+
+        // Optimization 4: simplified IsExternal check using Module reference comparison
+        private bool IsExternal(ITypeDefinition def)
+        {
+            // If the type belongs to a different module (assembly), it is external
+            return def.ParentModule != null && def.ParentModule != _mainModule;
+        }
+
+        public string GetOrCreateNode(IType type)
+        {
+            // Unwrap generics/pointers to get the actual definition
+            var definition = type.GetDefinition();
+
+            string id;
+            int tokenId = 0;
+            bool isExternal = true;
+
+            // If we can't resolve the definition, it's strictly external/unknown
+            if (definition == null)
+            {
+                id = type.FullName;
+            }
+            else
+            {
+                isExternal = IsExternal(definition);
+
+                if (isExternal)
+                {
+                    id = definition.FullName;
+                }
+                else
+                {
+                    // For internal types, use the MetadataToken (unique integer ID)
+                    // This is faster and safer than strings for internal linking
+                    tokenId = MetadataTokens.GetToken(definition.MetadataToken);
+                    id = tokenId.ToString();
+                }
+            }
+
+            // Fast lookup using TryGetValue
+            if (_nodes.TryGetValue(id, out var existing)) return existing.Id;
+
+            var newNode = new InheritanceGraphNodeDto
+            {
+                Id = id,
+                TokenId = tokenId,
+                FullName = type.FullName,
+                ShortName = type.Name,
+                Type = GetGraphNodeType(type.Kind),
+                IsExternal = isExternal
+            };
+
+            _nodes.Add(id, newNode);
+            return id;
+        }
+
+        private static InheritanceGraphNodeType GetGraphNodeType(TypeKind kind) => kind switch
+        {
+            TypeKind.Interface => InheritanceGraphNodeType.Interface,
+            TypeKind.Struct => InheritanceGraphNodeType.Struct,
+            TypeKind.Enum => InheritanceGraphNodeType.Enum,
+            _ => InheritanceGraphNodeType.Class
+        };
+    }
+}
+
+
+
+/*using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using DotnetVoyager.BLL.Factories;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -16,14 +160,9 @@ public interface IInheritanceGraphBuilderService
 /// A stateless service responsible for building the inheritance graph.
 /// It uses a stateful, short-lived GraphBuilder for each operation.
 /// </summary>
-public class InheritanceGraphBuilderService : IInheritanceGraphBuilderService
+public class InheritanceGraphBuilderService(IDecompilerFactory decompilerFactory) : IInheritanceGraphBuilderService
 {
-    private readonly IDecompilerFactory _decompilerFactory;
-
-    public InheritanceGraphBuilderService(IDecompilerFactory decompilerFactory)
-    {
-        _decompilerFactory = decompilerFactory;
-    }
+    private readonly IDecompilerFactory _decompilerFactory = decompilerFactory;
 
     public Task<InheritanceGraphDto> BuildGraphAsync(string assemblyPath)
     {
@@ -200,4 +339,4 @@ public class InheritanceGraphBuilderService : IInheritanceGraphBuilderService
             };
         }
     }
-}
+}*/

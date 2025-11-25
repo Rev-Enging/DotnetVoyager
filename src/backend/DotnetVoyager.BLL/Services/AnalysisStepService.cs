@@ -151,6 +151,7 @@ public class AnalysisStepService : IAnalysisStepService
         CancellationToken token = default)
     {
         return await _db.AnalysisSteps
+            .AsNoTracking()
             .Where(s => s.AnalysisId == analysisId && s.Status == AnalysisStepStatus.Pending)
             .FirstOrDefaultAsync(token);
     }
@@ -194,6 +195,7 @@ public class AnalysisStepService : IAnalysisStepService
         CancellationToken token = default)
     {
         return await _db.AnalysisSteps
+            .AsNoTracking()
             .Where(s => s.AnalysisId == analysisId)
             .ToListAsync(token);
     }
@@ -203,6 +205,7 @@ public class AnalysisStepService : IAnalysisStepService
         CancellationToken token = default)
     {
         var hasIncompleteRequired = await _db.AnalysisSteps
+            .AsNoTracking()
             .AnyAsync(s =>
                 s.AnalysisId == analysisId &&
                 s.Status != AnalysisStepStatus.Completed,
@@ -217,6 +220,7 @@ public class AnalysisStepService : IAnalysisStepService
         CancellationToken token = default)
     {
         var step = await _db.AnalysisSteps
+            .AsNoTracking()
             .FirstOrDefaultAsync(
                 s => s.AnalysisId == analysisId && s.StepName == stepName,
                 token);

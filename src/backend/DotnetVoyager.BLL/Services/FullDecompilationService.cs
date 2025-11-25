@@ -22,6 +22,51 @@ public interface IFullDecompilationService
 
 public class FullDecompilationService : IFullDecompilationService
 {
+    public Task DecompileProjectAsync(string assemblyPath, string outputDirectoryPath, CancellationToken token = default)
+    {
+        return Task.Run(() =>
+        {
+            Directory.CreateDirectory(outputDirectoryPath);
+
+            // Optimization: Shared file access + Delete permission
+            using var stream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using var peFile = new PEFile(assemblyPath, stream);
+
+            var targetFramework = peFile.DetectTargetFrameworkId();
+
+            var resolver = new UniversalAssemblyResolver(
+                assemblyPath,
+                throwOnError: false,
+                targetFramework: targetFramework
+            );
+
+            var searchDir = Path.GetDirectoryName(assemblyPath);
+            if (!string.IsNullOrEmpty(searchDir))
+            {
+                resolver.AddSearchDirectory(searchDir);
+            }
+
+            // ВИПРАВЛЕННЯ ТУТ:
+            // 1. Використовуємо простий конструктор, що приймає тільки resolver
+            var decompiler = new WholeProjectDecompiler(resolver);
+
+            // 2. Налаштовуємо Settings напряму через властивість об'єкта, 
+            // замість передачі окремого об'єкта settings у конструктор.
+            decompiler.Settings.ThrowOnAssemblyResolveErrors = false;
+            decompiler.Settings.UseSdkStyleProjectFormat = true;
+            decompiler.Settings.UseNestedDirectoriesForNamespaces = true;
+
+            // LanguageVersion видалено, бо бібліотека тепер визначає це сама.
+
+            // Запускаємо декомпіляцію
+            decompiler.DecompileProject(peFile, outputDirectoryPath, token);
+
+        }, token);
+    }
+}
+
+/*public class FullDecompilationService : IFullDecompilationService
+{
     public async Task DecompileProjectAsync(string assemblyPath, string outputDirectoryPath, CancellationToken token = default)
     {
         await Task.Run(() =>
@@ -67,4 +112,4 @@ public class FullDecompilationService : IFullDecompilationService
             
         }, token);
     }
-}
+}*/

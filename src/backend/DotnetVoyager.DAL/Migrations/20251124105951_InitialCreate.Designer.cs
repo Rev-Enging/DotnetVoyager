@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DotnetVoyager.DAL.Migrations
 {
     [DbContext(typeof(AnalysisDbContext))]
-    [Migration("20251116155347_InitialCreate")]
+    [Migration("20251124105951_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -38,6 +38,8 @@ namespace DotnetVoyager.DAL.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("AnalysisId");
+
+                    b.HasIndex("LastUpdatedUtc");
 
                     b.ToTable("AnalysisStatuses");
                 });
