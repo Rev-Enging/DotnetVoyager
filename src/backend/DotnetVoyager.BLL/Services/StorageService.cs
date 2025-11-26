@@ -25,17 +25,22 @@ public interface IStorageService
 
 public class StorageService : IStorageService
 {
-    private readonly StorageOptions _options;
-    private readonly string _contentRootPath;
+    private const string DllExtension = ".dll";
+    private const string ExeExtension = ".exe";
+
+    private readonly TimeSpan _pauseBetweenFailures = TimeSpan.FromMilliseconds(50);
+    private readonly int _maxRetryAttempts = 3;
+    
     private readonly AsyncRetryPolicy _retryPolicy;
+    private readonly string _basePath;
+
 
     public StorageService(IOptions<StorageOptions> options)
     {
-        _options = options.Value;
-        _contentRootPath = "";
+        _basePath = options.Value.Path;
         _retryPolicy = Policy
             .Handle<IOException>()
-            .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromMilliseconds(50));
+            .WaitAndRetryAsync(_maxRetryAttempts, retryAttempt => _pauseBetweenFailures);
     }
 
     public async Task<AnalysisLocationContext?> CreateAnalysisContextAsync(string analysisId, CancellationToken token = default)
@@ -53,13 +58,7 @@ public class StorageService : IStorageService
 
     public string GetAnalysisDirectoryPath(string analysisId)
     {
-        var basePath = _options.Path;
-
-        var absoluteBasePath = Path.IsPathRooted(basePath)
-            ? basePath
-            : Path.Combine(_contentRootPath, basePath);
-
-        return Path.Combine(absoluteBasePath, analysisId);
+        return Path.Combine(_basePath, analysisId);
     }
 
     public Task<string?> FindAssemblyFilePathAsync(string analysisId, CancellationToken token = default)
@@ -71,8 +70,8 @@ public class StorageService : IStorageService
         }
 
         var assemblyFile = Directory.EnumerateFiles(directoryPath)
-            .FirstOrDefault(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
-                                 f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(f => f.EndsWith(DllExtension, StringComparison.OrdinalIgnoreCase) ||
+                                 f.EndsWith(ExeExtension, StringComparison.OrdinalIgnoreCase));
 
         return Task.FromResult(assemblyFile);
     }

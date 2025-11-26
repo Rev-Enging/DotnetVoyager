@@ -20,7 +20,27 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 // ==================== OPTIONS ====================
-builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(ProjectConstants.AssemblyStorageSettingsSectionName));
+builder.Services.AddSingleton(serviceProvider =>
+{
+    var config = serviceProvider.GetRequiredService<IConfiguration>();
+    var env = serviceProvider.GetRequiredService<IWebHostEnvironment>();
+
+    var section = config.GetSection(ProjectConstants.AssemblyStorageSettingsSectionName);
+    var rawPath = section["Path"] ?? ProjectConstants.DefaultAnalysisStoragePath;
+
+    var finalPath = Path.IsPathRooted(rawPath)
+        ? rawPath
+        : Path.Combine(env.ContentRootPath, rawPath);
+
+    var options = new StorageOptions
+    {
+        Path = finalPath,
+        FileLifetimeMinutes = section.GetValue("FileLifetimeMinutes", ProjectConstants.DefaultFileLifetimeMinutes),
+        CleanupIntervalMinutes = section.GetValue("CleanupIntervalMinutes", ProjectConstants.DefaultCleanupIntervalMinutes)
+    };
+
+    return Options.Create(options);
+});
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(ProjectConstants.WorkerSettingsSectionName));
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(ProjectConstants.CorsOptionsSectionName));
 
