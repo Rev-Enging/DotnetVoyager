@@ -48,7 +48,37 @@ export const analysisService = {
         return await axiosInstance.get<DecompiledCodeDto>(API_ROUTES.ANALYSIS.GET_DECOMPILED_CODE(id, token));
     },
 
+    prepareZip: async (id: string) => {
+        return await axiosInstance.post(API_ROUTES.ANALYSIS.PREPARE_ZIP(id));
+    },
+
     downloadZip: async (id: string) => {
-        return await axiosInstance.get(API_ROUTES.ANALYSIS.DOWNLOAD_ZIP(id), { responseType: 'blob' });
+        const response = await axiosInstance.get(API_ROUTES.ANALYSIS.DOWNLOAD_ZIP(id), {
+            responseType: 'blob'
+        });
+
+        // Create a link for downloading
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+
+        // Retrieve the file name from headers or use the default
+        const contentDisposition = response.headers['content-disposition'];
+        let fileName = `analysis_${id}.zip`;
+
+        if (contentDisposition) {
+            const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (fileNameMatch && fileNameMatch[1]) {
+                fileName = fileNameMatch[1].replace(/['"]/g, '');
+            }
+        }
+
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        return response;
     }
 };
