@@ -103,14 +103,12 @@ export const AnalysisDashboard = () => {
 
         setIsExportingZip(true);
         try {
-            // Шаг 1: Инициируем генерацию ZIP
             await analysisService.prepareZip(analysisId);
 
-            // Шаг 2: Ждём, пока ZIP будет готов (можно добавить polling статуса)
-            // Для простоты подождём 2 секунды
+            // Wait for the ZIP to be ready (you can add a status poll)
+            // For simplicity, let's wait 2 seconds
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Шаг 3: Скачиваем готовый ZIP
             await analysisService.downloadZip(analysisId);
 
             console.log('ZIP downloaded successfully');

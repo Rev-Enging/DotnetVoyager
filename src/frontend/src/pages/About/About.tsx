@@ -1,5 +1,5 @@
 ﻿import { MainLayout } from '../../components/MainLayout/MainLayout';
-import { CubeIcon, GithubLogo, LinkedinLogo, CodeBlock, MagnifyingGlass, FileCode, Package } from '@phosphor-icons/react';
+import { CubeIcon, GithubLogo, /*LinkedinLogo*/ CodeBlock, MagnifyingGlass, FileCode, Package } from '@phosphor-icons/react';
 import './About.scss';
 
 export const About = () => {
@@ -84,7 +84,7 @@ export const About = () => {
                             reflection, and decompilation technologies while building a modern web application.
                         </p>
                         <div className="contact-links">
-                            <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="contact-link">
+                            <a href="https://github.com/Rev-Enging/DotnetVoyager" target="_blank" rel="noopener noreferrer" className="contact-link">
                                 <GithubLogo size={24} weight="fill" />
                                 GitHub
                             </a>
