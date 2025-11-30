@@ -1,0 +1,134 @@
+﻿@import '../../styles/variables.scss';
+
+.main-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: $bg-dark;
+    color: $text-primary;
+    overflow: hidden;
+
+    .main-header {
+        height: 48px;
+        background-color: $bg-header;
+        border-bottom: 1px solid $border-color;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        flex-shrink: 0;
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+
+            .logo-box {
+                width: 32px;
+                height: 32px;
+                background-color: $accent-purple;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 6px -1px rgba(88, 28, 135, 0.5);
+            }
+
+            .brand-text {
+                font-weight: bold;
+                font-size: 1.125rem;
+                color: $text-white;
+                .highlight { color: #c084fc; }
+            }
+        }
+
+        .nav-menu {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            font-size: 0.875rem;
+
+            a {
+                color: $text-primary;
+                text-decoration: none;
+                transition: color 0.2s;
+                &:hover { color: $text-white; }
+            }
+
+            .upload-btn {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background-color: transparent;
+                color: $text-primary;
+                border: 1px solid $border-color;
+                padding: 6px 16px;
+                border-radius: 6px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+
+                &:hover {
+                    background-color: $bg-hover;
+                    color: $text-white;
+                    border-color: $text-secondary;
+                }
+
+                &:active {
+                    transform: scale(0.98);
+                }
+            }
+
+            .export-btn {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background-color: $accent-purple;
+                color: $text-white;
+                border: none;
+                padding: 6px 16px;
+                border-radius: 6px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                position: relative;
+
+                &:hover:not(:disabled) {
+                    background-color: darken($accent-purple, 5%);
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 8px rgba(88, 28, 135, 0.4);
+                }
+
+                &:active:not(:disabled) {
+                    transform: translateY(0);
+                }
+
+                &:disabled {
+                    opacity: 0.7;
+                    cursor: not-allowed;
+                }
+
+                .spinning {
+                    animation: spin 1s linear infinite;
+                }
+            }
+        }
+    }
+
+    .main-content {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
