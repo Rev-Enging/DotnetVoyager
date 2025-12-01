@@ -1,0 +1,157 @@
+@import '../../styles/variables.scss';
+
+.loading-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $text-primary;
+  background-color: $bg-dark;
+}
+
+.dashboard-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+
+  .floating-toggle-btn {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    width: 40px;
+    height: 60px;
+    border: none;
+    background-color: $bg-sidebar;
+    color: $text-secondary;
+    cursor: pointer;
+    border-radius: 0 4px 4px 0;
+    border-right: 1px solid $border-light; // Додати межу для візуального відділення
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      color: $text-white;
+      background-color: $bg-hover;
+    }
+  }
+
+  .sidebar-resizer {
+    width: 4px;
+    background-color: $border-color;
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background-color 0.15s;
+    position: relative;
+
+    &:hover {
+      background-color: $accent-purple;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -2px;
+      right: -2px;
+    }
+  }
+
+  .left-sidebar {
+    width: 288px; // 72 * 4 (Tailwind w-72)
+    background-color: $bg-sidebar;
+    border-right: 1px solid $border-color;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0; // Забороняємо стискання
+    overflow: hidden; // Важливо для анімації приховування контенту
+
+    &.collapsed {
+      width: 0; // Вся секція зникає
+    }
+
+    .sidebar-header {
+      padding: 12px;
+      border-bottom: 1px solid $border-color;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+
+      .title {
+        font-size: 0.75rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: $text-secondary;
+      }
+
+      .icon-btn {
+        background: none;
+        border: none;
+        color: $text-secondary;
+        cursor: pointer;
+        transition: color 0.15s;
+
+        &:hover {
+          color: $text-white;
+        }
+      }
+    }
+
+    .search-box {
+      padding: 8px;
+      border-bottom: 1px solid $border-light;
+      flex-shrink: 0;
+
+      .input-wrapper {
+        position: relative;
+
+        .search-icon {
+          position: absolute;
+          left: 8px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: $text-secondary;
+        }
+
+        input {
+          width: 100%;
+          background-color: $bg-input;
+          color: $text-white;
+          border: 1px solid transparent;
+          border-radius: 2px;
+          padding: 4px 8px 4px 32px;
+          font-size: 0.875rem;
+          outline: none;
+
+          &:focus {
+            border-color: $accent-purple;
+          }
+
+          &::placeholder {
+            color: $text-secondary;
+          }
+        }
+      }
+    }
+
+    .tree-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+  }
+
+  .center-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+}
