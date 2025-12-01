@@ -56,10 +56,10 @@ export const UploadPage = () => {
                         <>
                             <UploadSimpleIcon size={64} className="upload-icon" />
                             <h2>Upload .NET Assembly</h2>
-                            <p>Drag & drop .exe or .dll files here</p>
+                            <p>Drag & drop .dll file here</p>
                             <label className="browse-btn">
                                 Browse Files
-                                <input type="file" onChange={onChange} accept=".dll,.exe" hidden />
+                                <input type="file" onChange={onChange} accept=".dll" hidden />
                             </label>
                         </>
                     )}

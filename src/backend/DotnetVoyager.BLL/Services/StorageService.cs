@@ -23,7 +23,6 @@ public interface IStorageService
 public class StorageService : IStorageService
 {
     private const string DllExtension = ".dll";
-    private const string ExeExtension = ".exe";
 
     private readonly TimeSpan _pauseBetweenFailures = TimeSpan.FromMilliseconds(50);
     private readonly int _maxRetryAttempts = 3;
@@ -74,8 +73,7 @@ public class StorageService : IStorageService
         }
 
         var assemblyFile = Directory.EnumerateFiles(directoryPath)
-            .FirstOrDefault(f => f.EndsWith(DllExtension, StringComparison.OrdinalIgnoreCase) ||
-                                 f.EndsWith(ExeExtension, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(f => f.EndsWith(DllExtension, StringComparison.OrdinalIgnoreCase));
 
         return Task.FromResult(assemblyFile);
     }
