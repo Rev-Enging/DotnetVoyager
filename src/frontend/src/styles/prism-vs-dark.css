@@ -1,0 +1,106 @@
+﻿/* BASE --------------------------------------------------------- */
+
+code[class*="language-"],
+pre[class*="language-"] {
+    color: #d4d4d4;
+    background: #1e1e1e;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    text-shadow: none;
+    white-space: pre;
+}
+
+pre[class*="language-"] {
+    padding: 12px;
+    overflow: auto;
+    border-radius: 4px;
+}
+
+/* TOKENS -------------------------------------------------------- */
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+    color: #6a9955;                /* green comments VS */
+}
+
+.token.keyword {
+    color: #569cd6;                /* keywords (public, void, class) */
+}
+
+.token.string {
+    color: #ce9178;                /* strings (pink/orange VS) */
+}
+
+.token.number {
+    color: #b5cea8;                /* numbers - greenish */
+}
+
+.token.boolean {
+    color: #569cd6;
+}
+
+.token.function {
+    color: #dcdcaa;                /* method`s name */
+}
+
+.token.class-name {
+    color: #4ec9b0;                /* types and classes */
+}
+
+.token.operator {
+    color: #d4d4d4;
+}
+
+.token.punctuation {
+    color: #d4d4d4;
+}
+
+.token.regex {
+    color: #d16969;
+}
+
+.token.namespace {
+    color: #4ec9b0;
+}
+
+/* IL/ASM style tweaks ------------------------------------------ */
+
+/* Метки IL_0000: */
+.token.label {
+    color: #c586c0;
+    font-weight: bold;
+}
+
+/* .method, .locals, .maxstack */
+.token.directive,
+.token.important {
+    color: #c586c0;
+}
+
+/* Хекс-числа */
+.token.hexcode {
+    color: #b5cea8;
+}
+
+/* ATTRIBUTE LIST  ( [blah] ) */
+.token.attr-name {
+    color: #9cdcfe;
+}
+
+.token.attr-value {
+    color: #ce9178;
+}
+
+/* highlight keywords in IL code manually based on assembly rules */
+.token.instruction {
+    color: #c8c8ff;
+}
+
+/* Selected text background (like VS) */
+pre::selection,
+code::selection {
+    background: #264f78;
+}

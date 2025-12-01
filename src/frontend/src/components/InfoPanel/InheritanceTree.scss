@@ -1,0 +1,146 @@
+﻿@import '../../styles/variables.scss';
+
+.inheritance-tree-container {
+    padding: 8px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.875rem;
+
+    .placeholder-text {
+        color: $text-secondary;
+        font-style: italic;
+        padding: 10px;
+        text-align: center;
+        font-size: 0.8rem;
+    }
+
+    .tree-branch {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .tree-node-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        width: fit-content;
+        transition: background-color 0.2s;
+
+        &:hover {
+            background-color: $border-light; // Було #333
+        }
+
+        // Стиль для головного (вибраного) елемента
+        &.root-node {
+            background-color: $bg-selection; // Було #37373d
+            border: 1px solid rgba($color-struct, 0.5); // Blue border opacity
+            margin-bottom: 4px;
+        }
+
+        // Стиль для зовнішніх типів (System.Object і т.д.)
+        &.external-node {
+            opacity: 0.7;
+            .node-name { color: $text-secondary; }
+        }
+
+        .node-name {
+            color: $text-white;
+            font-weight: 500;
+        }
+
+        .external-label {
+            font-size: 0.7em;
+            color: $text-secondary;
+            margin-left: 4px;
+        }
+    }
+
+    // --- Badges (C, I, S, E) ---
+    .node-badge {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        font-size: 9px;
+        font-weight: bold;
+        border: 1px solid;
+
+        // Class (Green)
+        &.badge-class {
+            color: lighten($color-class, 20%);
+            border-color: $color-class;
+            background-color: rgba($color-class, 0.2);
+        }
+
+        // Interface (Purple)
+        &.badge-interface {
+            color: lighten($color-interface, 20%);
+            border-color: $color-interface;
+            background-color: rgba($color-interface, 0.2);
+        }
+
+        // Struct (Blue)
+        &.badge-struct {
+            color: lighten($color-struct, 20%);
+            border-color: $color-struct;
+            background-color: rgba($color-struct, 0.2);
+        }
+
+        // Enum (Orange)
+        &.badge-enum {
+            color: lighten($color-enum, 20%);
+            border-color: $color-enum;
+            background-color: rgba($color-enum, 0.2);
+        }
+
+        &.badge-unknown {
+             color: $text-secondary;
+             border-color: $text-secondary;
+             background-color: rgba($text-secondary, 0.1);
+        }
+    }
+
+    // --- Lines & Hierarchy Structure ---
+    .tree-children {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .child-wrapper {
+        display: flex;
+        position: relative;
+    }
+
+    .line-connector {
+        width: 24px;
+        display: flex;
+        justify-content: center;
+        flex-shrink: 0;
+
+        .vertical-line {
+            width: 1px;
+            background-color: $color-line; // Було hardcoded gray
+            height: 100%;
+        }
+    }
+
+    .child-content {
+        flex: 1;
+        padding-top: 4px;
+
+        // Горизонтальна лінія
+        &::before {
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 16px;
+            width: 12px;
+            height: 1px;
+            background-color: $color-line; // Було hardcoded gray
+        }
+    }
+}

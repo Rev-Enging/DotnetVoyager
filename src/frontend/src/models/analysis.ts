@@ -3,29 +3,10 @@ export type AssemblyTreeNodeType =
     | 'Assembly' | 'Namespace' | 'Class' | 'Interface'
     | 'Struct' | 'Method' | 'Property' | 'Field';
 
-export type AnalysisOverallStatus = 'Pending' | 'Processing' | 'Completed' | 'Failed' | 'PartiallyCompleted';
+export type AnalysisOverallStatus = 'Pending' | 'Processing' | 'Completed' | 'Failed';
 export type AnalysisStepStatus = 'Pending' | 'InProgress' | 'Completed' | 'Failed';
 
 export type InheritanceGraphNodeType = 'Class' | 'Interface' | 'Struct' | 'Enum';
-
-// Backend:
-/*[JsonConverter(typeof (JsonStringEnumConverter))]
-public enum AnalysisStepStatus {
-    Pending,
-    Processing,
-    Completed,
-    Failed,
-    NotProcessed
-}
-
-[JsonConverter(typeof (JsonStringEnumConverter))]
-public enum AnalysisOverallStatus {
-    Pending,
-    Processing,
-    PartiallyCompleted,  // Some steps done, some failed
-    Completed,           // All required steps done
-    Failed               // Critical steps failed
-}*/
 
 // DTOs
 export interface AssemblyReferenceDto {
