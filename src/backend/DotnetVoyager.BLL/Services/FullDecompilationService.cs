@@ -1,6 +1,4 @@
-﻿using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.CSharp;
-using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
+﻿using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.Metadata;
 
 namespace DotnetVoyager.BLL.Services;
@@ -46,70 +44,14 @@ public class FullDecompilationService : IFullDecompilationService
                 resolver.AddSearchDirectory(searchDir);
             }
 
-            // ВИПРАВЛЕННЯ ТУТ:
-            // 1. Використовуємо простий конструктор, що приймає тільки resolver
             var decompiler = new WholeProjectDecompiler(resolver);
 
-            // 2. Налаштовуємо Settings напряму через властивість об'єкта, 
-            // замість передачі окремого об'єкта settings у конструктор.
             decompiler.Settings.ThrowOnAssemblyResolveErrors = false;
             decompiler.Settings.UseSdkStyleProjectFormat = true;
             decompiler.Settings.UseNestedDirectoriesForNamespaces = true;
 
-            // LanguageVersion видалено, бо бібліотека тепер визначає це сама.
-
-            // Запускаємо декомпіляцію
             decompiler.DecompileProject(peFile, outputDirectoryPath, token);
 
         }, token);
     }
 }
-
-/*public class FullDecompilationService : IFullDecompilationService
-{
-    public async Task DecompileProjectAsync(string assemblyPath, string outputDirectoryPath, CancellationToken token = default)
-    {
-        await Task.Run(() =>
-        {
-            // Створюємо директорію, якщо не існує
-            Directory.CreateDirectory(outputDirectoryPath);
-
-            // Налаштовуємо resolver
-            var resolver = new UniversalAssemblyResolver(
-                assemblyPath,
-                throwOnError: false,
-                targetFramework: null
-            );
-            
-            var searchDir = Path.GetDirectoryName(assemblyPath);
-            if (!string.IsNullOrEmpty(searchDir))
-            {
-                resolver.AddSearchDirectory(searchDir);
-            }
-
-            // Налаштовуємо DecompilerSettings
-            var settings = new DecompilerSettings
-            {
-                ThrowOnAssemblyResolveErrors = false,
-                UseSdkStyleProjectFormat = true,
-                UseNestedDirectoriesForNamespaces = true
-            };
-
-            // Створюємо project writer
-
-            // Створюємо WholeProjectDecompiler з правильними параметрами
-            var decompiler = new WholeProjectDecompiler(
-                settings,
-                resolver,
-                null,
-                null, // debugInfoProvider
-                null  // assemblyReferenceClassifier
-            );
-            
-            // Запускаємо декомпіляцію
-            using var module = new PEFile(assemblyPath);
-            decompiler.DecompileProject(module, outputDirectoryPath, token);
-            
-        }, token);
-    }
-}*/

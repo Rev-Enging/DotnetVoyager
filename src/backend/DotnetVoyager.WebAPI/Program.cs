@@ -19,6 +19,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
+// ==================== MEMORY CACHE ====================
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = 1000;
+});
+
 // ==================== OPTIONS ====================
 builder.Services.AddSingleton(serviceProvider =>
 {
@@ -45,6 +51,7 @@ builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(Proje
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(ProjectConstants.CorsOptionsSectionName));
 
 // ==================== CORE SERVICES ====================
+builder.Services.AddSingleton<IDecompilerCacheService, DecompilerCacheService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<IAnalysisStatusService, DatabaseAnalysisStatusService>();
 builder.Services.AddScoped<IAnalysisStepService, AnalysisStepService>();
