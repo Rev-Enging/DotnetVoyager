@@ -6,7 +6,7 @@ import '../../styles/prism-vs-dark.css';
 import 'prismjs/components/prism-csharp';
 import 'prismjs/components/prism-clike';
 import 'prismjs/components/prism-asm6502';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
 type ViewMode = 'csharp' | 'il' | 'both';
 
@@ -22,19 +22,21 @@ const INITIAL_SPLIT = 50;
 
 export const CodeViewer = ({ csharpCode, ilCode, viewMode, onChangeViewMode, isLoading }: CodeViewerProps) => {
 
-    const csRef = useRef<HTMLElement>(null);
-    const ilRef = useRef<HTMLElement>(null);
     const contentAreaRef = useRef<HTMLDivElement>(null);
     const [csharpWidth, setCsharpWidth] = useState(INITIAL_SPLIT);
-
-    // Стан для відстеження перетягування
     const [isResizing, setIsResizing] = useState(false);
 
-    useEffect(() => {
-        Prism.highlightAll();
-    }, [csharpCode, ilCode, viewMode]);
+    // Генеруємо підсвічений HTML
+    const highlightedCsharp = useMemo(() => {
+        if (!csharpCode) return '// Select a method to view code';
+        return Prism.highlight(csharpCode, Prism.languages.csharp, 'csharp');
+    }, [csharpCode]);
 
-    // Обробник початку перетягування
+    const highlightedIL = useMemo(() => {
+        if (!ilCode) return '';
+        return Prism.highlight(ilCode, Prism.languages.asm6502, 'asm6502');
+    }, [ilCode]);
+
     const handleMouseDown = (e: React.MouseEvent) => {
         if (viewMode === 'both') {
             e.preventDefault();
@@ -42,28 +44,20 @@ export const CodeViewer = ({ csharpCode, ilCode, viewMode, onChangeViewMode, isL
         }
     };
 
-    // Обробник руху миші
-    const handleMouseMove = (e: MouseEvent) => {
-        if (!isResizing || !contentAreaRef.current) return;
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!contentAreaRef.current) return;
 
         const container = contentAreaRef.current;
         const containerRect = container.getBoundingClientRect();
-
-        // Позиція миші відносно лівого краю контейнера
         const x = e.clientX - containerRect.left;
-
-        // Обчислення нової ширини в процентах
         let newWidthPercent = (x / containerRect.width) * 100;
-
         newWidthPercent = Math.max(10, Math.min(90, newWidthPercent));
-
         setCsharpWidth(newWidthPercent);
-    };
+    }, []);
 
-    // Обробник завершення перетягування
-    const handleMouseUp = () => {
+    const handleMouseUp = useCallback(() => {
         setIsResizing(false);
-    };
+    }, []);
 
     useEffect(() => {
         if (isResizing) {
@@ -74,12 +68,11 @@ export const CodeViewer = ({ csharpCode, ilCode, viewMode, onChangeViewMode, isL
             document.removeEventListener('mouseup', handleMouseUp);
         }
 
-        // Прибираємо слухачі при демонтажі компонента
         return () => {
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isResizing]); // Залежність тільки від isResizing
+    }, [isResizing, handleMouseMove, handleMouseUp]);
 
     return (
         <div className="code-viewer">
@@ -121,11 +114,9 @@ export const CodeViewer = ({ csharpCode, ilCode, viewMode, onChangeViewMode, isL
 
                                 <pre className="code-block">
                                     <code
-                                        ref={csRef}
                                         className="language-csharp"
-                                    >
-                                        {csharpCode || '// Select a method to view code'}
-                                    </code>
+                                        dangerouslySetInnerHTML={{ __html: highlightedCsharp }}
+                                    />
                                 </pre>
                             </div>
                         )}
@@ -146,11 +137,9 @@ export const CodeViewer = ({ csharpCode, ilCode, viewMode, onChangeViewMode, isL
 
                                 <pre className="code-block">
                                     <code
-                                        ref={ilRef}
                                         className="language-asm6502"
-                                    >
-                                        {ilCode || ''}
-                                    </code>
+                                        dangerouslySetInnerHTML={{ __html: highlightedIL }}
+                                    />
                                 </pre>
                             </div>
                         )}
