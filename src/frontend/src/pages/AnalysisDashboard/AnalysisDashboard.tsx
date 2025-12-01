@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { MainLayout } from '../../components/MainLayout/MainLayout';
 import { AssemblyTree } from '../../components/AssemblyTree/AssemblyTree';
@@ -18,6 +18,10 @@ import { MagnifyingGlassIcon, ArrowsInLineHorizontalIcon, ArrowsOutLineHorizonta
 import classNames from 'classnames';
 import './AnalysisDashboard.scss';
 
+const MIN_SIDEBAR_WIDTH = 100;
+const MAX_SIDEBAR_WIDTH = 600;
+const DEFAULT_SIDEBAR_WIDTH = 288;
+
 export const AnalysisDashboard = () => {
     const { id } = useParams<{ id: string }>();
     const analysisId = id!;
@@ -35,6 +39,11 @@ export const AnalysisDashboard = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isExportingZip, setIsExportingZip] = useState(false);
+    const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+
+    const isResizingRef = useRef(false);
+    const startXRef = useRef(0);
+    const startWidthRef = useRef(0);
 
     // Polling Status
     useEffect(() => {
@@ -84,7 +93,7 @@ export const AnalysisDashboard = () => {
     const handleNodeSelect = async (token: number, type: AssemblyTreeNodeType) => {
         setSelectedToken(token);
 
-        if (type === 'Method' || type === 'Class') {
+        if (type === 'Method' || type === 'Class' || type === 'Interface' || type === 'Struct') {
             setIsCodeLoading(true);
             try {
                 const res = await analysisService.getDecompiledCode(analysisId, token);
@@ -104,13 +113,8 @@ export const AnalysisDashboard = () => {
         setIsExportingZip(true);
         try {
             await analysisService.prepareZip(analysisId);
-
-            // Wait for the ZIP to be ready (you can add a status poll)
-            // For simplicity, let's wait 2 seconds
             await new Promise(resolve => setTimeout(resolve, 2000));
-
             await analysisService.downloadZip(analysisId);
-
             console.log('ZIP downloaded successfully');
         } catch (e) {
             console.error('Export failed:', e);
@@ -124,6 +128,44 @@ export const AnalysisDashboard = () => {
         setIsSidebarCollapsed(!isSidebarCollapsed);
     };
 
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isResizingRef.current = true;
+        startXRef.current = e.clientX;
+        startWidthRef.current = sidebarWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, [sidebarWidth]);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizingRef.current) return;
+
+            const delta = e.clientX - startXRef.current;
+            const newWidth = startWidthRef.current + delta;
+
+            if (newWidth >= MIN_SIDEBAR_WIDTH && newWidth <= MAX_SIDEBAR_WIDTH) {
+                setSidebarWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            if (isResizingRef.current) {
+                isResizingRef.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
+
     if (status !== 'Completed' && !tree) {
         return (
             <MainLayout showUploadNew={false}>
@@ -135,14 +177,16 @@ export const AnalysisDashboard = () => {
     return (
         <MainLayout onExportZip={handleExportZip} isExportingZip={isExportingZip} showUploadNew={true}>
             <div className="dashboard-container">
-                {/* Floating toggle button когда сайдбар свернут */}
                 {isSidebarCollapsed && (
                     <button className="floating-toggle-btn" onClick={toggleSidebar}>
                         <ArrowsOutLineHorizontalIcon weight="bold" />
                     </button>
                 )}
 
-                <aside className={classNames('left-sidebar', { collapsed: isSidebarCollapsed })}>
+                <aside
+                    className={classNames('left-sidebar', { collapsed: isSidebarCollapsed })}
+                    style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
+                >
                     <div className="sidebar-header">
                         <span className="title">Assembly Explorer</span>
                         <button className="icon-btn" onClick={toggleSidebar}>
@@ -171,6 +215,13 @@ export const AnalysisDashboard = () => {
                         )}
                     </div>
                 </aside>
+
+                {!isSidebarCollapsed && (
+                    <div
+                        className="sidebar-resizer"
+                        onMouseDown={handleMouseDown}
+                    />
+                )}
 
                 <main className="center-panel">
                     <CodeViewer
