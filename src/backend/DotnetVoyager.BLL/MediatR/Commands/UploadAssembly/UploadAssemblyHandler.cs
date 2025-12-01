@@ -1,5 +1,4 @@
 ﻿using DotnetVoyager.BLL.Dtos;
-using DotnetVoyager.BLL.Enums;
 using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Services;
@@ -11,31 +10,36 @@ using Microsoft.Extensions.Logging;
 
 namespace DotnetVoyager.BLL.MediatR.Commands.UploadAssembly;
 
+public record UploadAssemblyCommand(UploadAssemblyDto uploadDto) : IRequest<Result<UploadAssemblyResultDto>>;
+
 public class UploadAssemblyHandler : IRequestHandler<UploadAssemblyCommand, Result<UploadAssemblyResultDto>>
 {
     private readonly IStorageService _storageService;
-    private readonly IBackgroundTaskQueue _backgroundTaskQueue;
+    private readonly IAnalysisTaskQueue _taskQueue;
     private readonly ILogger<UploadAssemblyHandler> _logger;
-    private readonly IValidator<UploadAssemblyDto> _uploadRequestValidator;
-    private readonly IAnalysisStatusService _analysisStatusService;
+    private readonly IValidator<UploadAssemblyDto> _validator;
+    private readonly IAnalysisStatusService _statusService;
 
     public UploadAssemblyHandler(
         IStorageService storageService,
-        IBackgroundTaskQueue backgroundTaskQueue,
-        IValidator<UploadAssemblyDto> uploadRequestValidator,
+        IAnalysisTaskQueue taskQueue,
+        IValidator<UploadAssemblyDto> validator,
         ILogger<UploadAssemblyHandler> logger,
-        IAnalysisStatusService analysisStatusService)
+        IAnalysisStatusService statusService)
     {
-        _logger = logger;
         _storageService = storageService;
-        _backgroundTaskQueue = backgroundTaskQueue;
-        _uploadRequestValidator = uploadRequestValidator;
-        _analysisStatusService = analysisStatusService;
+        _taskQueue = taskQueue;
+        _validator = validator;
+        _logger = logger;
+        _statusService = statusService;
     }
 
-    public async Task<Result<UploadAssemblyResultDto>> Handle(UploadAssemblyCommand request, CancellationToken cancellationToken)
+    public async Task<Result<UploadAssemblyResultDto>> Handle(
+        UploadAssemblyCommand request,
+        CancellationToken cancellationToken)
     {
-        var validationResult = await _uploadRequestValidator.ValidateAsync(request.uploadDto, cancellationToken);
+        var validationResult = await _validator.ValidateAsync(
+            request.uploadDto, cancellationToken);
 
         if (!validationResult.IsValid)
         {
@@ -45,24 +49,22 @@ public class UploadAssemblyHandler : IRequestHandler<UploadAssemblyCommand, Resu
         var file = request.uploadDto.File!;
         var analysisId = Guid.NewGuid().ToString();
 
-        // Save assembly file
+        // 1. Create analysis record and initialize steps
+        await _statusService.CreateAnalysisAsync(analysisId, file.FileName, cancellationToken);
+        _logger.LogInformation(
+            "Created analysis record with steps for ID '{AnalysisId}'", analysisId);
+
+        // 2. Save file
         await _storageService.SaveAssemblyFileAsync(file, analysisId, cancellationToken);
-        _logger.LogInformation("Saved uploaded file '{FileName}' for analysis ID '{AnalysisId}'", file.FileName, analysisId);
+        _logger.LogInformation(
+            "Saved file '{FileName}' for analysis '{AnalysisId}'",
+            file.FileName, analysisId);
 
-        // Set pending status
-        await _analysisStatusService.SetStatusAsync(analysisId, AnalysisStatus.Pending, null, cancellationToken);
-        _logger.LogInformation("Set initial status to 'Pending' for ID '{AnalysisId}'", analysisId);
+        // 3. Enqueue for processing
+        await _taskQueue.EnqueueAsync(new AnalysisTask(analysisId));
+        _logger.LogInformation(
+            "Enqueued analysis task for ID '{AnalysisId}'", analysisId);
 
-        // Add assembly to analysis queue
-        var analysisTask = new AnalysisTask(analysisId);
-        await _backgroundTaskQueue.EnqueueAsync(analysisTask);
-        _logger.LogInformation("Enqueued analysis task to background worker for ID '{AnalysisId}'", analysisId);
-
-        var response = new UploadAssemblyResultDto
-        {
-            AnalysisId = analysisId
-        };
-
-        return Result.Ok(response);
+        return Result.Ok(new UploadAssemblyResultDto { AnalysisId = analysisId });
     }
 }

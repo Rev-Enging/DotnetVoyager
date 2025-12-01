@@ -1,5 +1,7 @@
 ﻿using DotnetVoyager.BLL.Dtos;
+using DotnetVoyager.BLL.Models;
 using DotnetVoyager.BLL.Options;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
@@ -10,40 +12,57 @@ namespace DotnetVoyager.BLL.Services;
 public interface IStorageService
 {
     string GetAnalysisDirectoryPath(string analysisId);
-
+    Task<AnalysisLocationContext?> CreateAnalysisContextAsync(string analysisId, CancellationToken token = default);
     Task<string?> FindAssemblyFilePathAsync(string analysisId, CancellationToken token = default);
     Task<string> SaveAssemblyFileAsync(FileDto file, string analysisId, CancellationToken token = default);
-
     Task DeleteAnalysisAsync(string analysisId, CancellationToken token = default);
-
     Task SaveDataAsync(string analysisId, object data, string fileName, CancellationToken token = default);
     Task<T?> ReadDataAsync<T>(string analysisId, string fileName, CancellationToken token = default) where T : class;
 }
 
 public class StorageService : IStorageService
 {
-    private readonly StorageOptions _options;
-    private readonly string _contentRootPath;
-    private readonly AsyncRetryPolicy _retryPolicy;
+    private const string DllExtension = ".dll";
+    private const string ExeExtension = ".exe";
 
-    public StorageService(IOptions<StorageOptions> options)
+    private readonly TimeSpan _pauseBetweenFailures = TimeSpan.FromMilliseconds(50);
+    private readonly int _maxRetryAttempts = 3;
+
+    private readonly AsyncRetryPolicy _retryPolicy;
+    private readonly string _basePath;
+    private readonly IDecompilerCacheService _decompilerCache;
+    private readonly ILogger<StorageService> _logger;
+
+    public StorageService(
+        IOptions<StorageOptions> options,
+        IDecompilerCacheService decompilerCache,
+        ILogger<StorageService> logger)
     {
-        _options = options.Value;
-        _contentRootPath = "";
+        _basePath = options.Value.Path;
+        _decompilerCache = decompilerCache;
+        _logger = logger;
+
         _retryPolicy = Policy
             .Handle<IOException>()
-            .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromMilliseconds(50));
+            .WaitAndRetryAsync(_maxRetryAttempts, retryAttempt => _pauseBetweenFailures);
+    }
+
+    public async Task<AnalysisLocationContext?> CreateAnalysisContextAsync(string analysisId, CancellationToken token = default)
+    {
+        var assemblyPath = await FindAssemblyFilePathAsync(analysisId, token);
+        if (assemblyPath == null) return null;
+
+        return new AnalysisLocationContext
+        {
+            AnalysisId = analysisId,
+            AssemblyPath = assemblyPath,
+            AnalysisDirectory = GetAnalysisDirectoryPath(analysisId)
+        };
     }
 
     public string GetAnalysisDirectoryPath(string analysisId)
     {
-        var basePath = _options.Path;
-
-        var absoluteBasePath = Path.IsPathRooted(basePath)
-            ? basePath
-            : Path.Combine(_contentRootPath, basePath);
-
-        return Path.Combine(absoluteBasePath, analysisId);
+        return Path.Combine(_basePath, analysisId);
     }
 
     public Task<string?> FindAssemblyFilePathAsync(string analysisId, CancellationToken token = default)
@@ -55,22 +74,27 @@ public class StorageService : IStorageService
         }
 
         var assemblyFile = Directory.EnumerateFiles(directoryPath)
-            .FirstOrDefault(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
-                                 f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(f => f.EndsWith(DllExtension, StringComparison.OrdinalIgnoreCase) ||
+                                 f.EndsWith(ExeExtension, StringComparison.OrdinalIgnoreCase));
 
         return Task.FromResult(assemblyFile);
     }
 
-    public Task DeleteAnalysisAsync(string analysisId, CancellationToken token = default)
+    public async Task DeleteAnalysisAsync(string analysisId, CancellationToken token = default)
     {
-        var directoryPath = GetAnalysisDirectoryPath(analysisId);
+        var assemblyPath = await FindAssemblyFilePathAsync(analysisId, token);
+        if (assemblyPath != null)
+        {
+            _decompilerCache.RemovePEFile(assemblyPath);
+            _logger.LogDebug("Cleared decompiler cache for: {Path}", assemblyPath);
+        }
 
+        var directoryPath = GetAnalysisDirectoryPath(analysisId);
         if (Directory.Exists(directoryPath))
         {
             Directory.Delete(directoryPath, recursive: true);
+            _logger.LogInformation("Deleted analysis directory: {AnalysisId}", analysisId);
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task<string> SaveAssemblyFileAsync(FileDto file, string analysisId, CancellationToken token = default)
@@ -84,6 +108,8 @@ public class StorageService : IStorageService
         {
             await file.FileStream.CopyToAsync(stream, token);
         }
+
+        _logger.LogInformation("Saved assembly file: {FileName} for {AnalysisId}", file.FileName, analysisId);
         return file.FileName;
     }
 

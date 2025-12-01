@@ -1,11 +1,14 @@
-﻿using DotnetVoyager.BLL.Dtos;
+﻿using DotnetVoyager.BLL.Dtos.AnalysisResults;
 using DotnetVoyager.BLL.Errors;
 using DotnetVoyager.BLL.Services;
+using DotnetVoyager.BLL.Services.Analyzers;
 using FluentResults;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
 namespace DotnetVoyager.BLL.MediatR.Queries.GetDecompiledCode;
+
+public record GetDecompiledCodeQuery(string AnalysisId, int lookupToken) : IRequest<Result<DecompiledCodeDto>>;
 
 public class GetDecompiledCodeHandler : IRequestHandler<GetDecompiledCodeQuery, Result<DecompiledCodeDto>>
 {

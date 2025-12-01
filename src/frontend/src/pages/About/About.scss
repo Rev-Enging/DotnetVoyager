@@ -1,0 +1,213 @@
+﻿@import '../../styles/variables.scss';
+
+.about-page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%);
+
+  .about-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 60px 24px;
+
+    .about-header {
+      text-align: center;
+      margin-bottom: 60px;
+
+      .logo-section {
+        .big-logo {
+          width: 120px;
+          height: 120px;
+          background: linear-gradient(135deg, $accent-purple 0%, #9333ea 100%);
+          border-radius: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 24px;
+          box-shadow: 0 20px 40px rgba(88, 28, 135, 0.4);
+          color: white;
+        }
+
+        h1 {
+          font-size: 3rem;
+          font-weight: 800;
+          color: $text-white;
+          margin: 0 0 12px 0;
+
+          .highlight {
+            background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+          }
+        }
+
+        .tagline {
+          font-size: 1.25rem;
+          color: $text-secondary;
+          margin: 0;
+        }
+      }
+    }
+
+    .about-section {
+      background-color: $bg-sidebar;
+      border: 1px solid $border-color;
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 32px;
+
+      h2 {
+        font-size: 1.75rem;
+        color: $text-white;
+        margin: 0 0 20px 0;
+        font-weight: 700;
+      }
+
+      p {
+        font-size: 1rem;
+        line-height: 1.8;
+        color: $text-primary;
+        margin: 0 0 16px 0;
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+    }
+
+    .features-section {
+      background-color: $bg-sidebar;
+      border: 1px solid $border-color;
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 32px;
+
+      h2 {
+        font-size: 1.75rem;
+        color: $text-white;
+        margin: 0 0 32px 0;
+        font-weight: 700;
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 24px;
+
+        .feature-card {
+          background-color: $bg-dark;
+          border: 1px solid $border-color;
+          border-radius: 8px;
+          padding: 24px;
+          transition: all 0.3s ease;
+
+          &:hover {
+            transform: translateY(-4px);
+            border-color: $accent-purple;
+            box-shadow: 0 8px 24px rgba(88, 28, 135, 0.3);
+          }
+
+          .feature-icon {
+            color: $accent-purple;
+            margin-bottom: 16px;
+          }
+
+          h3 {
+            font-size: 1.125rem;
+            color: $text-white;
+            margin: 0 0 12px 0;
+            font-weight: 600;
+          }
+
+          p {
+            font-size: 0.875rem;
+            line-height: 1.6;
+            color: $text-secondary;
+            margin: 0;
+          }
+        }
+      }
+    }
+
+    .tech-stack {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 32px;
+      margin-top: 24px;
+
+      .tech-column {
+        h3 {
+          font-size: 1.25rem;
+          color: $accent-purple;
+          margin: 0 0 16px 0;
+          font-weight: 600;
+        }
+
+        ul {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+
+          li {
+            padding: 8px 0;
+            color: $text-primary;
+            font-size: 0.95rem;
+            position: relative;
+            padding-left: 20px;
+
+            &:before {
+              content: '▸';
+              position: absolute;
+              left: 0;
+              color: $accent-purple;
+            }
+          }
+        }
+      }
+    }
+
+    .contact-links {
+      display: flex;
+      gap: 16px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+
+      .contact-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 24px;
+        background-color: $bg-dark;
+        border: 1px solid $border-color;
+        border-radius: 8px;
+        color: $text-primary;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.2s ease;
+
+        &:hover {
+          background-color: $accent-purple;
+          border-color: $accent-purple;
+          color: $text-white;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(88, 28, 135, 0.4);
+        }
+      }
+    }
+
+    .about-footer {
+      text-align: center;
+      padding: 32px 0 0;
+      margin-top: 32px;
+      border-top: 1px solid $border-color;
+
+      p {
+        color: $text-secondary;
+        font-size: 0.875rem;
+        margin: 0;
+      }
+    }
+  }
+}

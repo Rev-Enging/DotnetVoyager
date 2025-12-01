@@ -1,0 +1,56 @@
+﻿@import '../../styles/variables.scss';
+
+.highlight-text {
+    background-color: rgba(234, 179, 8, 0.3); // Жовтуватий фон
+    color: #fff;
+    border-radius: 2px;
+}
+
+.assembly-tree-node {
+    font-size: 0.875rem;
+    user-select: none;
+    color: $text-primary;
+
+    .node-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        cursor: pointer;
+        transition: background-color 0.1s;
+
+        &:hover {
+            background-color: $bg-hover;
+            color: $text-white;
+        }
+
+        &.node-selected {
+            background-color: $bg-selection;
+            color: $text-white;
+        }
+    }
+
+    .toggle-icon {
+        color: $text-secondary;
+        display: flex;
+        align-items: center;
+        &:hover { color: $text-white; }
+    }
+
+    .type-icon {
+        display: flex;
+        align-items: center;
+
+        .icon-assembly { color: #eab308; } // Yellow
+        .icon-namespace { color: #60a5fa; } // Blue
+        .icon-class { color: #22c55e; } // Green
+        .icon-interface { color: #c084fc; } // Purple
+        .icon-method { color: #c084fc; font-size: 0.8em; }
+    }
+
+    .node-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}

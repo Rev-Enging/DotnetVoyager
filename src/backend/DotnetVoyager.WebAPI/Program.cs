@@ -1,38 +1,98 @@
 using DotnetVoyager.BLL;
 using DotnetVoyager.BLL.Constants;
+using DotnetVoyager.BLL.Factories;
+using DotnetVoyager.BLL.Logging;
 using DotnetVoyager.BLL.Options;
 using DotnetVoyager.BLL.Services;
+using DotnetVoyager.BLL.Services.AnalysisSteps;
+using DotnetVoyager.BLL.Services.Analyzers;
+using DotnetVoyager.BLL.Validators;
 using DotnetVoyager.BLL.Workers;
+using DotnetVoyager.DAL.Data;
+using DotnetVoyager.DAL.Initialization;
+using DotnetVoyager.WebAPI.Exensions;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-// Configure options
-builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(ProjectConstants.StorageSettingsSectionName));
+// ==================== MEMORY CACHE ====================
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = 1000;
+});
+
+// ==================== OPTIONS ====================
+builder.Services.AddSingleton(serviceProvider =>
+{
+    var config = serviceProvider.GetRequiredService<IConfiguration>();
+    var env = serviceProvider.GetRequiredService<IWebHostEnvironment>();
+
+    var section = config.GetSection(ProjectConstants.AssemblyStorageSettingsSectionName);
+    var rawPath = section["Path"] ?? ProjectConstants.DefaultAnalysisStoragePath;
+
+    var finalPath = Path.IsPathRooted(rawPath)
+        ? rawPath
+        : Path.Combine(env.ContentRootPath, rawPath);
+
+    var options = new StorageOptions
+    {
+        Path = finalPath,
+        FileLifetimeMinutes = section.GetValue("FileLifetimeMinutes", ProjectConstants.DefaultFileLifetimeMinutes),
+        CleanupIntervalMinutes = section.GetValue("CleanupIntervalMinutes", ProjectConstants.DefaultCleanupIntervalMinutes)
+    };
+
+    return Options.Create(options);
+});
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(ProjectConstants.WorkerSettingsSectionName));
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(ProjectConstants.CorsOptionsSectionName));
 
-// Configure services
+// ==================== CORE SERVICES ====================
+builder.Services.AddSingleton<IDecompilerCacheService, DecompilerCacheService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
-builder.Services.AddScoped<IDependencyAnalyzerService, DependencyAnalyzerService>();
-builder.Services.AddScoped<IMetadataReaderService, MetadataReaderService>();
-builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+builder.Services.AddScoped<IAnalysisStatusService, DatabaseAnalysisStatusService>();
+builder.Services.AddScoped<IAnalysisStepService, AnalysisStepService>();
+builder.Services.AddScoped<IAnalysisOrchestrator, AnalysisOrchestrator>();
 builder.Services.AddScoped<IAssemblyValidator, AssemblyValidator>();
-builder.Services.AddScoped<IAnalysisStatusService, AnalysisStatusService>();
-builder.Services.AddScoped<IStructureAnalyzerService, StructureAnalyzerService>();
-builder.Services.AddScoped<ICodeDecompilationService, CodeDecompilationService>();
-builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 
-// Add FluentValidation
+// ==================== ANALYSIS SERVICES ====================
+builder.Services.AddScoped<IAssemblyReferenceAnalyzer, AssemblyReferenceAnalyzer>();
+builder.Services.AddScoped<IMetadataReaderService, MetadataReaderService>();
+builder.Services.AddScoped<IStatisticsAnalyzer, StatisticsAnalyzer>();
+builder.Services.AddScoped<IAssemblyTreeAnalyzer, AssemblyTreeAnalyzer>();
+builder.Services.AddScoped<IInheritanceGraphBuilderService, InheritanceGraphBuilderService>();
+builder.Services.AddScoped<ICodeDecompilationService, CodeDecompilationService>();
+builder.Services.AddScoped<IFullDecompilationService, FullDecompilationService>();
+
+// ==================== ANALYSIS STEPS ====================
+builder.Services.AddScoped<IAnalysisStep, MetadataAnalysisStep>();
+builder.Services.AddScoped<IAnalysisStep, StatisticsAnalysisStep>();
+builder.Services.AddScoped<IAnalysisStep, AssemblyTreeAnalysisStep>();
+builder.Services.AddScoped<IAnalysisStep, InheritanceGraphAnalysisStep>();
+builder.Services.AddScoped<IAnalysisStep, ZipGenerationStep>();
+builder.Services.AddScoped<IAnalysisStep, AssemblyDependencyAnalysisStep>();
+
+// ==================== VALIDATION ====================
 builder.Services.AddValidatorsFromAssemblyContaining<BllAssemblyMarker>();
 
-// Configure background services
-builder.Services.AddHostedService<QueuedHostedService>();
+// ==================== FACTORIES & SINGLETONS ====================
+builder.Services.AddSingleton<IDecompilerFactory, DecompilerFactory>();
+builder.Services.AddSingleton<IAnalysisTaskQueue, AnalysisTaskQueue>();
 
-// Configure logging
+// ==================== BACKGROUND WORKERS ====================
+builder.Services.AddHostedService<AnalysisWorkerService>();
+builder.Services.AddHostedService<StorageCleanupWorker>();
+
+// ==================== MEDIATR ====================
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(BllAssemblyMarker).Assembly);
+});
+
+// ==================== LOGGING ====================
 builder.Logging.AddSimpleConsole(options =>
 {
     options.IncludeScopes = true;
@@ -40,21 +100,31 @@ builder.Logging.AddSimpleConsole(options =>
     options.UseUtcTimestamp = false;
 });
 
-// Configure MediatR
-builder.Services.AddMediatR(cfg =>
-{
-    cfg.RegisterServicesFromAssembly(typeof(BllAssemblyMarker).Assembly);
-});
-
-// Configure swagger
+// ==================== SWAGGER ====================
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
 }
 
+// ==================== DATABASE ====================
+builder.Services.AddDbContext<AnalysisDbContext>((serviceProvider, optionsBuilder) =>
+{
+    var storageOptions = serviceProvider.GetRequiredService<IOptions<StorageOptions>>().Value;
 
-// Configure CORS
+    var storagePath = Path.IsPathRooted(storageOptions.Path)
+        ? storageOptions.Path
+        : Path.Combine(builder.Environment.ContentRootPath, storageOptions.Path);
+
+    Directory.CreateDirectory(storagePath);
+
+    var dbPath = Path.Combine(storagePath, "analysis_state.db");
+    var connectionString = $"Data Source={dbPath}";
+
+    optionsBuilder.UseSqlite(connectionString);
+});
+
+// ==================== CORS ====================
 var corsOptions = builder.Configuration.GetSection(ProjectConstants.CorsOptionsSectionName).Get<CorsOptions>();
 
 if (corsOptions == null || corsOptions.AllowedOrigins == null || !corsOptions.AllowedOrigins.Any())
@@ -72,10 +142,14 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Build the app
+// ==================== BUILD APP ====================
 var app = builder.Build();
 
-ValidateAndLogSettings(app);
+app.VerifyAnalysisStepRegistrations();
+
+MissingSettingsLogger.LogMissingSettings(app);
+
+await DatabaseInitializer.InitializeAndRecoverTasksAsync(app);
 
 if (app.Environment.IsDevelopment())
 {
@@ -92,41 +166,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 await app.RunAsync();
-
-static void ValidateAndLogSettings(WebApplication webApp)
-{
-    using var scope = webApp.Services.CreateScope();
-    var services = scope.ServiceProvider;
-
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    var config = services.GetRequiredService<IConfiguration>();
-
-    // StorageOptions
-    var storageOptions = services.GetRequiredService<IOptions<StorageOptions>>().Value;
-    var storageSection = config.GetSection(ProjectConstants.StorageSettingsSectionName);
-
-    logger.LogInformation($"Validating {nameof(StorageOptions)} settings...");
-    LogIfSettingIsMissing(logger, storageSection, nameof(StorageOptions.Path), storageOptions.Path);
-    LogIfSettingIsMissing(logger, storageSection, nameof(StorageOptions.FileLifetimeMinutes), storageOptions.FileLifetimeMinutes);
-
-    // WorkerOptions
-    var workerOptions = services.GetRequiredService<IOptions<WorkerOptions>>().Value;
-    var workerSection = config.GetSection(ProjectConstants.WorkerSettingsSectionName);
-
-    logger.LogInformation($"Validating {nameof(WorkerOptions)} settings...");
-    LogIfSettingIsMissing(logger, workerSection, nameof(WorkerOptions.AnalysisConcurrentWorkers), workerOptions.AnalysisConcurrentWorkers);
-    LogIfSettingIsMissing(logger, workerSection, nameof(WorkerOptions.AnalysisTimeoutMinutes), workerOptions.AnalysisTimeoutMinutes);
-}
-
-static void LogIfSettingIsMissing(ILogger logger, IConfigurationSection section, string key, object defaultValue)
-{
-    if (!section.GetChildren().Any(x => x.Key == key))
-    {
-        logger.LogWarning(
-            "The '{SettingName}' was not found in section '{SectionName}'. Using default value: {DefaultValue}",
-            key,
-            section.Key,
-            defaultValue
-        );
-    }
-}
