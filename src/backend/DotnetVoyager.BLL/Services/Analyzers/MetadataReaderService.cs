@@ -13,67 +13,56 @@ public class MetadataReaderService : IMetadataReaderService
 {
     public Task<AssemblyMetadataDto> GetAssemblyMetadataAsync(string assemblyPath, CancellationToken token = default)
     {
-        // Optimization 1: Use FileStream with FileShare.Read. 
-        // This prevents loading the whole file into RAM (LOH protection).
-        // We use FileShare.Read/Delete to ensure we don't lock the file against the cleanup service.
+        // Open file with shared access to avoid locking it.
         using var stream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-
         using var peReader = new PEReader(stream);
 
         if (!peReader.HasMetadata)
         {
-            throw new InvalidOperationException("The provided file does not contain CLI metadata.");
+            throw new InvalidOperationException("File contains no CLI metadata.");
         }
 
-        var metadataReader = peReader.GetMetadataReader();
-        var assemblyDef = metadataReader.GetAssemblyDefinition();
+        var reader = peReader.GetMetadataReader();
+        var assemblyDef = reader.GetAssemblyDefinition();
 
-        // Optimization 3: Pre-allocate List capacity to avoid resizing
-        var referenceHandles = metadataReader.AssemblyReferences;
-        var dependencies = new List<string>(referenceHandles.Count);
-
-        foreach (var handle in referenceHandles)
+        // Collect external assembly references.
+        var dependencies = new List<string>();
+        foreach (var handle in reader.AssemblyReferences)
         {
-            var reference = metadataReader.GetAssemblyReference(handle);
-            dependencies.Add(metadataReader.GetString(reference.Name));
+            var reference = reader.GetAssemblyReference(handle);
+            dependencies.Add(reader.GetString(reference.Name));
         }
 
-        var metadata = new AssemblyMetadataDto
+        return Task.FromResult(new AssemblyMetadataDto
         {
-            AssemblyName = metadataReader.GetString(assemblyDef.Name),
+            AssemblyName = reader.GetString(assemblyDef.Name),
             Version = assemblyDef.Version.ToString(),
-            TargetFramework = GetTargetFramework(metadataReader),
+            TargetFramework = GetTargetFramework(reader),
             Architecture = GetArchitecture(peReader.PEHeaders.CoffHeader.Machine),
             Dependencies = dependencies
-        };
-
-        return Task.FromResult(metadata);
+        });
     }
 
     private static string GetTargetFramework(MetadataReader reader)
     {
-        // Optimization 2: Replace LINQ with a foreach loop to reduce memory allocations
         foreach (var handle in reader.CustomAttributes)
         {
             var attr = reader.GetCustomAttribute(handle);
 
-            // Check if the constructor is a MemberReference (typical for external attributes like TargetFramework)
+            // Filter for attributes defined in external assemblies.
             if (attr.Constructor.Kind != HandleKind.MemberReference) continue;
 
             var memberRef = reader.GetMemberReference((MemberReferenceHandle)attr.Constructor);
-            var typeRefHandle = memberRef.Parent;
+            if (memberRef.Parent.Kind != HandleKind.TypeReference) continue;
 
-            if (typeRefHandle.Kind != HandleKind.TypeReference) continue;
+            var typeRef = reader.GetTypeReference((TypeReferenceHandle)memberRef.Parent);
 
-            var typeRef = reader.GetTypeReference((TypeReferenceHandle)typeRefHandle);
-
-            // Quick check on the name before reading the blob
+            // Check if the attribute is TargetFrameworkAttribute.
             if (reader.GetString(typeRef.Name) == "TargetFrameworkAttribute")
             {
                 return DecodeTargetFrameworkBlob(reader, attr.Value);
             }
         }
-
         return "Unknown";
     }
 
@@ -81,19 +70,16 @@ public class MetadataReaderService : IMetadataReaderService
     {
         try
         {
-            var blobReader = reader.GetBlobReader(valueHandle);
+            var blob = reader.GetBlobReader(valueHandle);
 
-            // Prolog check (must be 0x0001)
-            if (blobReader.ReadUInt16() == 0x0001)
+            // 0x0001 is the standard prolog for custom attribute blobs.
+            if (blob.ReadUInt16() == 0x0001)
             {
-                // The first argument of TargetFrameworkAttribute is the framework name string
-                return blobReader.ReadSerializedString() ?? "Unknown";
+                return blob.ReadSerializedString() ?? "Unknown";
             }
         }
-        catch
-        {
-            // Fallback in case of malformed blob
-        }
+        catch { /* Ignore parsing errors */ }
+
         return "Unknown";
     }
 
@@ -103,6 +89,6 @@ public class MetadataReaderService : IMetadataReaderService
         Machine.I386 => "x86",
         Machine.Arm => "ARM",
         Machine.Arm64 => "ARM64",
-        _ => "Any CPU" // Or specific mapping for Bit32/Itanium if needed
+        _ => "Any CPU"
     };
 }

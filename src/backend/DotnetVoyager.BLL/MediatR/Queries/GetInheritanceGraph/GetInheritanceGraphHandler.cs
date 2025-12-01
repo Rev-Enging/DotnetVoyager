@@ -31,25 +31,3 @@ public class GetInheritanceGraphHandler : BaseAnalysisResultHandler<GetInheritan
             cancellationToken);
     }
 }
-
-/*public class GetInheritanceGraphHandler : IRequestHandler<GetInheritanceGraphQuery, Result<InheritanceGraphDto>>
-{
-    private readonly IMediator _mediator;
-
-    public GetInheritanceGraphHandler(IMediator mediator)
-    {
-        _mediator = mediator;
-    }
-
-    public Task<Result<InheritanceGraphDto>> Handle(
-        GetInheritanceGraphQuery request,
-        CancellationToken cancellationToken)
-    {
-        return _mediator.Send(
-            new GetAnalysisResultQuery<InheritanceGraphDto>(
-                request.AnalysisId,
-                AnalysisStepNames.InheritanceGraph,
-                ProjectConstants.AnalysisInheritanceGraphFileName),
-            cancellationToken);
-    }
-}*/

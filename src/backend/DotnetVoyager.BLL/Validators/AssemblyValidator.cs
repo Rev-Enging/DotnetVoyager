@@ -15,20 +15,20 @@ public class AssemblyValidator : IAssemblyValidator
     {
         try
         {
-            // PEReader спеціально розроблений для читання метаданих збірок.
-            // Ми створюємо його в блоці using, щоб переконатися, що ресурси звільнені.
-            // LeaveOpen: true важливо, щоб ми могли повторно використовувати потік.
+            // LeaveOpen: true is important so that we can reuse the stream later.
             using (var peReader = new PEReader(stream, PEStreamOptions.LeaveOpen))
             {
-                // Якщо цей метод не викинув виняток, значить, файл має валідний PE-заголовок
-                // і є .NET-збіркою.
+                // If this does not throw an exception, the file has a valid PE header
+                // and is potentially a .NET assembly.
                 if (!peReader.HasMetadata)
                 {
-                    return Task.FromResult(new ValidationResult(false, "The file is not a valid .NET assembly (missing metadata)."));
+                    return Task.FromResult(new ValidationResult(
+                        IsValid: false, 
+                        ErrorMessage: "The file is not a valid .NET assembly (missing metadata)."));
                 }
             }
 
-            // Важливо! Повертаємо позицію потоку на початок для подальшого читання (напр., для збереження).
+            // Reset the stream position to the beginning for further reading (e.g., for saving).
             stream.Position = 0;
             return Task.FromResult(new ValidationResult(true));
         }
