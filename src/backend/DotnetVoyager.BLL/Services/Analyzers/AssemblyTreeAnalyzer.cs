@@ -6,11 +6,19 @@ using System.Reflection.PortableExecutable;
 
 namespace DotnetVoyager.BLL.Services.Analyzers;
 
+/// <summary>
+/// Analyzes .NET assembly metadata and builds a hierarchical tree structure
+/// of namespaces, types, methods, and properties using System.Reflection.Metadata API.
+/// </summary>
 public interface IAssemblyTreeAnalyzer
 {
     Task<AssemblyTreeDto> AnalyzeAssemblyTreeAsync(string assemblyPath);
 }
 
+/// <summary>
+/// Implementation that processes assembly metadata and filters out compiler-generated artifacts
+/// to show only user-defined code structure.
+/// </summary>
 public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
 {
     private const string NoNamespace = "[No Namespace]";
@@ -21,40 +29,49 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
     {
         return Task.Run(() =>
         {
+            // Open the assembly file with shared read access to allow other processes to access it
             using var stream = new FileStream(assemblyPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             using var peReader = new PEReader(stream);
 
+            // Verify that the file contains valid CLI metadata
             if (!peReader.HasMetadata)
             {
                 throw new InvalidOperationException("The provided file does not contain CLI metadata.");
             }
 
             var reader = peReader.GetMetadataReader();
+            // Dictionary to group types by their namespace for hierarchical organization
             var namespaceGroups = new Dictionary<string, List<AssemblyTreeNodeDto>>();
 
+            // Iterate through all type definitions in the assembly metadata
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var typeDef = reader.GetTypeDefinition(typeHandle);
 
-                // ФІЛЬТР: Пропускаємо compiler-generated типи
+                // FILTER: Skip compiler-generated types (closures, anonymous types, state machines, etc.)
+                // This keeps the tree clean and shows only user-defined types
                 if (IsCompilerGenerated(reader, typeDef))
                     continue;
 
                 string ns = GetNamespace(reader, typeDef);
 
+                // Create namespace group if it doesn't exist yet
                 if (!namespaceGroups.TryGetValue(ns, out var list))
                 {
                     list = new List<AssemblyTreeNodeDto>();
                     namespaceGroups.Add(ns, list);
                 }
 
+                // Add the type node to its namespace group
                 list.Add(CreateTypeNode(reader, typeDef, typeHandle));
             }
 
+            // Build the namespace nodes with sorted children
             var rootChildren = new List<AssemblyTreeNodeDto>(namespaceGroups.Count);
 
             foreach (var kvp in namespaceGroups)
             {
+                // Sort types alphabetically within each namespace for better readability
                 kvp.Value.Sort((x, y) => string.Compare(x.Name, y.Name, StringComparison.Ordinal));
 
                 rootChildren.Add(new AssemblyTreeNodeDto
@@ -66,11 +83,14 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
                 });
             }
 
+            // Sort namespaces alphabetically at the root level
             rootChildren.Sort((x, y) => string.Compare(x.Name, y.Name, StringComparison.Ordinal));
 
+            // Get the assembly name from metadata to use as the root node name
             var assemblyDef = reader.GetAssemblyDefinition();
             string assemblyName = reader.GetString(assemblyDef.Name);
 
+            // Return the complete tree structure with assembly as root
             return new AssemblyTreeDto
             {
                 Root = new AssemblyTreeNodeDto
@@ -88,22 +108,25 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
     {
         var children = new List<AssemblyTreeNodeDto>();
 
-        // Process Methods
+        // Process all methods defined in the type
         foreach (var methodHandle in typeDef.GetMethods())
         {
             var method = reader.GetMethodDefinition(methodHandle);
 
-            // Фільтруємо спеціальні методи та compiler-generated
+            // Filter out special methods like property getters/setters and constructors
+            // SpecialName marks compiler-generated accessor methods
+            // RTSpecialName marks runtime special methods like constructors
             var attributes = method.Attributes;
             if ((attributes & MethodAttributes.SpecialName) != 0 ||
                 (attributes & MethodAttributes.RTSpecialName) != 0)
                 continue;
 
-            // ДОДАТКОВИЙ ФІЛЬТР: пропускаємо compiler-generated методи
+            // ADDITIONAL FILTER: Skip compiler-generated methods (lambdas, local functions, etc.)
             string methodName = reader.GetString(method.Name);
             if (IsCompilerGeneratedName(methodName))
                 continue;
 
+            // Add the method as a leaf node (no children)
             children.Add(new AssemblyTreeNodeDto
             {
                 Name = methodName,
@@ -113,16 +136,17 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
             });
         }
 
-        // Process Properties
+        // Process all properties defined in the type
         foreach (var propHandle in typeDef.GetProperties())
         {
             var prop = reader.GetPropertyDefinition(propHandle);
             string propName = reader.GetString(prop.Name);
 
-            // ФІЛЬТР: пропускаємо compiler-generated властивості
+            // FILTER: Skip compiler-generated properties (backing fields, etc.)
             if (IsCompilerGeneratedName(propName))
                 continue;
 
+            // Add the property as a leaf node
             children.Add(new AssemblyTreeNodeDto
             {
                 Name = propName,
@@ -132,8 +156,10 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
             });
         }
 
+        // Sort members alphabetically for consistent display
         children.Sort((x, y) => string.Compare(x.Name, y.Name, StringComparison.Ordinal));
 
+        // Return the complete type node with all its members
         return new AssemblyTreeNodeDto
         {
             Name = reader.GetString(typeDef.Name),
@@ -147,11 +173,12 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
     {
         string typeName = reader.GetString(typeDef.Name);
 
-        // Перевіряємо типові патерни compiler-generated типів
+        // Check typical patterns of compiler-generated type names
         if (IsCompilerGeneratedName(typeName))
             return true;
 
-        // Додаткова перевірка через атрибути
+        // Additional check through attributes - look for CompilerGeneratedAttribute
+        // This is more reliable but slower than name pattern matching
         foreach (var attrHandle in typeDef.GetCustomAttributes())
         {
             var attr = reader.GetCustomAttribute(attrHandle);
@@ -171,19 +198,26 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
         return false;
     }
 
+    // Checks if a name matches compiler-generated naming patterns.
+    // The C# compiler uses angle brackets (< >) which are invalid in source code but allowed in IL:
+    // - Anonymous types: <>f__AnonymousType
+    // - Closure classes: <>c__DisplayClass
+    // - Lambda cache: <>c
+    // - Iterator/async state machines: <MethodName>d__
     private static bool IsCompilerGeneratedName(string name)
     {
-        // Compiler-generated типи та члени мають характерні імена:
-        // - Починаються з '<' або '<>'
-        // - Містять '>' в імені
-        // - Анонімні типи: <>f__AnonymousType
-        // - Closure класи: <>c__DisplayClass
-        // - Lambda кеш: <>c
+        // Compiler-generated types and members have characteristic names:
+        // - Start with '<' or '<>'
+        // - Contain '>' in the name
+        // - Anonymous types: <>f__AnonymousType
+        // - Closure classes: <>c__DisplayClass
+        // - Lambda cache: <>c
         // - Iterator/async state machines: <MethodName>d__
 
         if (string.IsNullOrEmpty(name))
             return false;
 
+        // Angle brackets are not valid in C# identifiers, so their presence indicates compiler generation
         return name.StartsWith("<>") ||
                (name.Contains('<') && name.Contains('>'));
     }
@@ -196,124 +230,11 @@ public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
 
     private static AssemblyTreeNodeType GetNodeType(TypeAttributes attributes)
     {
+        // Check the Interface flag in type attributes
         if ((attributes & TypeAttributes.Interface) != 0)
             return AssemblyTreeNodeType.Interface;
 
+        // Default to Class for all other types (classes, structs, enums, delegates)
         return AssemblyTreeNodeType.Class;
     }
 }
-
-/*using DotnetVoyager.BLL.Dtos.AnalysisResults;
-using Mono.Cecil;
-
-namespace DotnetVoyager.BLL.Services.Analyzers;
-
-public interface IAssemblyTreeAnalyzer
-{
-    Task<AssemblyTreeDto> AnalyzeAssemblyTreeAsync(string assemblyPath);
-}
-
-public class AssemblyTreeAnalyzer : IAssemblyTreeAnalyzer
-{
-    private const string NoNamespace = "[No Namespace]";
-    private const int AssemblyToken = 0;
-    private const int NamespaceToken = 0;
-
-    public Task<AssemblyTreeDto> AnalyzeAssemblyTreeAsync(string assemblyPath)
-    {
-        return Task.Run(() =>
-        {
-            using var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
-
-            var rootNode = AnalyzeAssembly(assembly);
-
-            return new AssemblyTreeDto
-            {
-                Root = rootNode
-            };
-        });
-    }
-
-    private AssemblyTreeNodeDto AnalyzeAssembly(AssemblyDefinition assembly)
-    {
-        var namespaceNodes = assembly.MainModule.Types
-            .Where(t => t.IsPublic)
-            .GroupBy(t => t.Namespace ?? NoNamespace)
-            .Select(AnalyzeNamespace)
-            .OrderBy(n => n.Name)
-            .ToList();
-
-        return new AssemblyTreeNodeDto
-        {
-            Name = assembly.Name.Name,
-            Type = AssemblyTreeNodeType.Assembly,
-            Token = AssemblyToken,
-            Children = namespaceNodes.Any() ? namespaceNodes : null
-        };
-    }
-
-    private AssemblyTreeNodeDto AnalyzeNamespace(IGrouping<string, TypeDefinition> namespaceGroup)
-    {
-        var typeNodes = namespaceGroup
-            .Select(AnalyzeTypeDefinition)
-            .OrderBy(t => t.Name)
-            .ToList();
-
-        return new AssemblyTreeNodeDto
-        {
-            Name = namespaceGroup.Key,
-            Type = AssemblyTreeNodeType.Namespace,
-            Token = NamespaceToken,
-            Children = typeNodes.Any() ? typeNodes : null
-        };
-    }
-
-    private AssemblyTreeNodeDto AnalyzeTypeDefinition(TypeDefinition type)
-    {
-        var methodNodes = type.Methods
-            .Where(m => !m.IsConstructor && !m.IsSpecialName)
-            .Select(m => new AssemblyTreeNodeDto
-            {
-                Name = m.Name,
-                Type = AssemblyTreeNodeType.Method,
-                Token = m.MetadataToken.ToInt32(),
-                Children = null
-            })
-            .OrderBy(m => m.Name);
-
-        var propertyNodes = type.Properties
-            .Select(p => new AssemblyTreeNodeDto
-            {
-                Name = p.Name,
-                Type = AssemblyTreeNodeType.Property,
-                Token = p.MetadataToken.ToInt32(),
-                Children = null
-            })
-            .OrderBy(p => p.Name);
-
-        var children = propertyNodes.Concat(methodNodes).ToList();
-
-        return new AssemblyTreeNodeDto
-        {
-            Name = type.Name,
-            Type = GetNodeType(type),
-            Token = type.MetadataToken.ToInt32(),
-            Children = children.Any() ? children : null
-        };
-    }
-
-    private static AssemblyTreeNodeType GetNodeType(TypeDefinition type)
-    {
-        if (type.IsInterface)
-            return AssemblyTreeNodeType.Interface;
-
-        if (type.IsValueType)
-            return AssemblyTreeNodeType.Struct;
-
-        if (type.IsClass)
-            return AssemblyTreeNodeType.Class;
-
-        return AssemblyTreeNodeType.Class;
-    }
-}
-*/

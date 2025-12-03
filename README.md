@@ -13,4 +13,4 @@ A web-based static analysis tool designed to inspect .NET assemblies (`.dll`, `.
 
 - **Backend**: ASP.NET Core Web API
 - **Frontend**: React (TypeScript)
-- **Analysis Engine**: Mono.Cecil
+- 

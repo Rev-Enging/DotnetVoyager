@@ -66,9 +66,6 @@ public static class AnalysisStepNames
     public static IEnumerable<string> GetRequiredSteps()
         => RequiredSteps;
 
-    public static IEnumerable<string> GetAllSteps()
-        => RequiredSteps.Append(ZipGeneration);
-
     public static string ToStepName(this AnalysisStepName stepName)
     => stepName.ToString();
 

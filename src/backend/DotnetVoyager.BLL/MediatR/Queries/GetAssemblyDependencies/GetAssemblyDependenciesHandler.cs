@@ -31,25 +31,3 @@ public class GetAssemblyDependenciesHandler : BaseAnalysisResultHandler<GetAssem
             cancellationToken);
     }
 }
-
-/*public class GetAssemblyDependenciesHandler : IRequestHandler<GetAssemblyDependenciesQuery, Result<AssemblyDependenciesDto>>
-{
-    private readonly IMediator _mediator;
-
-    public GetAssemblyDependenciesHandler(IMediator mediator)
-    {
-        _mediator = mediator;
-    }
-
-    public Task<Result<AssemblyDependenciesDto>> Handle(
-        GetAssemblyDependenciesQuery request,
-        CancellationToken cancellationToken)
-    {
-        return _mediator.Send(
-            new GetAnalysisResultQuery<AssemblyDependenciesDto>(
-                request.AnalysisId,
-                AnalysisStepNames.AssemblyDependencies,
-                ProjectConstants.AssemblyDependenciesFileName),
-            cancellationToken);
-    }
-}*/

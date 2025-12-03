@@ -33,10 +33,9 @@ public class CodeDecompilationService : ICodeDecompilationService
 
     public Task<DecompiledCodeDto> DecompileCodeAsync(string assemblyPath, int token)
     {
-        // Generate cache key
         var cacheKey = $"decompiled_{assemblyPath}_{token}";
 
-        // Try get from cache
+        // Check if we have already decompiled this entity to save CPU.
         if (_cache.TryGetValue<DecompiledCodeDto>(cacheKey, out var cached))
         {
             _logger.LogDebug("Cache HIT for {Path}:{Token}", assemblyPath, token);
@@ -45,10 +44,9 @@ public class CodeDecompilationService : ICodeDecompilationService
 
         _logger.LogDebug("Cache MISS for {Path}:{Token}", assemblyPath, token);
 
-        // Perform decompilation
         var result = PerformDecompilation(assemblyPath, token);
 
-        // Store in cache (30 minutes)
+        // Cache the result for 30 minutes.
         var cacheOptions = new MemoryCacheEntryOptions
         {
             Size = 1,
@@ -63,7 +61,7 @@ public class CodeDecompilationService : ICodeDecompilationService
 
     private DecompiledCodeDto PerformDecompilation(string assemblyPath, int token)
     {
-        // Get or create cached PEFile
+        // Reuse the opened PEFile instance to avoid disk I/O.
         var peFile = _decompilerCache.GetOrCreatePEFile(assemblyPath);
 
         if (peFile == null)
@@ -73,7 +71,7 @@ public class CodeDecompilationService : ICodeDecompilationService
 
         try
         {
-            // Setup Decompiler
+            // Resolver is needed to find types from other DLLs (e.g. System.String).
             var resolver = new UniversalAssemblyResolver(
                 assemblyPath,
                 false,
@@ -81,11 +79,13 @@ public class CodeDecompilationService : ICodeDecompilationService
 
             var decompiler = new CSharpDecompiler(peFile, resolver, new DecompilerSettings());
 
-            // Decompile C#
+            // Convert integer token (ID) back to a Handle struct required by the library.
             var handle = MetadataTokens.EntityHandle(token);
+
+            // Reconstruct high-level C# code (loops, async/await, etc.).
             var csharpCode = decompiler.DecompileAsString(handle);
 
-            // Disassemble IL
+            // Extract low-level IL instructions.
             string ilCode = GetIlCode(peFile, handle);
 
             return new DecompiledCodeDto
@@ -101,14 +101,17 @@ public class CodeDecompilationService : ICodeDecompilationService
         }
     }
 
-    private static string GetIlCode(ICSharpCode.Decompiler.Metadata.PEFile peFile, EntityHandle handle)
+    private static string GetIlCode(PEFile peFile, EntityHandle handle)
     {
+        // IL code exists only for methods. Classes or properties don't have direct IL instructions.
         if (handle.Kind != HandleKind.MethodDefinition)
         {
             return "IL code is available only for methods.";
         }
 
         var output = new PlainTextOutput();
+
+        // Disassembler translates raw bytes into readable IL text (e.g., "ldstr", "call").
         var disassembler = new ReflectionDisassembler(output, CancellationToken.None);
         disassembler.DisassembleMethod(peFile, (MethodDefinitionHandle)handle);
 

@@ -31,20 +31,3 @@ public class GetStatisticHandler : BaseAnalysisResultHandler<GetStatisticQuery, 
             cancellationToken);
     }
 }
-
-/*public class GetStatisticHandler(IMediator mediator) : IRequestHandler<GetStatisticQuery, Result<AssemblyStatisticsDto>>
-{
-    private readonly IMediator _mediator = mediator;
-
-    public Task<Result<AssemblyStatisticsDto>> Handle(
-        GetStatisticQuery request,
-        CancellationToken cancellationToken)
-    {
-        return _mediator.Send(
-            new GetAnalysisResultQuery<AssemblyStatisticsDto>(
-                request.AnalysisId,
-                AnalysisStepNames.Statistics,
-                ProjectConstants.AnalysisStatisticsFileName),
-            cancellationToken);
-    }
-}*/

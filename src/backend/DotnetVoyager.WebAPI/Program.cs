@@ -1,6 +1,5 @@
 using DotnetVoyager.BLL;
 using DotnetVoyager.BLL.Constants;
-using DotnetVoyager.BLL.Factories;
 using DotnetVoyager.BLL.Logging;
 using DotnetVoyager.BLL.Options;
 using DotnetVoyager.BLL.Services;
@@ -79,7 +78,6 @@ builder.Services.AddScoped<IAnalysisStep, AssemblyDependencyAnalysisStep>();
 builder.Services.AddValidatorsFromAssemblyContaining<BllAssemblyMarker>();
 
 // ==================== FACTORIES & SINGLETONS ====================
-builder.Services.AddSingleton<IDecompilerFactory, DecompilerFactory>();
 builder.Services.AddSingleton<IAnalysisTaskQueue, AnalysisTaskQueue>();
 
 // ==================== BACKGROUND WORKERS ====================

@@ -31,25 +31,3 @@ public class GetAssemblyTreeHandler : BaseAnalysisResultHandler<GetAssemblyTreeQ
             cancellationToken);
     }
 }
-
-/*public class GetAssemblyTreeHandler : IRequestHandler<GetAssemblyTreeQuery, Result<AssemblyTreeDto>>
-{
-    private readonly IMediator _mediator;
-
-    public GetAssemblyTreeHandler(IMediator mediator)
-    {
-        _mediator = mediator;
-    }
-
-    public Task<Result<AssemblyTreeDto>> Handle(
-        GetAssemblyTreeQuery request,
-        CancellationToken cancellationToken)
-    {
-        return _mediator.Send(
-            new GetAnalysisResultQuery<AssemblyTreeDto>(
-                request.AnalysisId,
-                AnalysisStepNames.AssemblyTree,
-                ProjectConstants.AssemblyTreeFileName),
-            cancellationToken);
-    }
-}*/

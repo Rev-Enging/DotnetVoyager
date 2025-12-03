@@ -14,17 +14,23 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
 {
     public Task<AssemblyStatisticsDto> GetAssemblyStatisticsAsync(string assemblyPath)
     {
+        // Offload heavy metadata parsing to a background thread.
         return Task.Run(() => AnalyzeAssembly(assemblyPath));
     }
 
-    // Refactored: Main analysis logic extracted to reduce complexity
     private static AssemblyStatisticsDto AnalyzeAssembly(string assemblyPath)
     {
-        using var fileStream = OpenAssemblyFile(assemblyPath);
+        using var fileStream = new FileStream(
+            assemblyPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read | FileShare.Delete);
+
         using var peReader = new PEReader(fileStream);
 
         ValidateMetadata(peReader);
 
+        // MetadataReader provides low-level access to the logical structure (tables) of the assembly.
         var metadataReader = peReader.GetMetadataReader();
         var collector = new StatisticsCollector();
 
@@ -33,31 +39,17 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
         return collector.ToDto();
     }
 
-    // Refactored: File opening logic separated
-    private static FileStream OpenAssemblyFile(string assemblyPath)
-    {
-        return new FileStream(
-            assemblyPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read | FileShare.Delete);
-    }
-
-    // Refactored: Validation logic separated
     private static void ValidateMetadata(PEReader peReader)
     {
         if (!peReader.HasMetadata)
         {
-            throw new InvalidOperationException(
-                "The provided file does not contain CLI metadata.");
+            throw new InvalidOperationException("The provided file does not contain CLI metadata.");
         }
     }
 
-    // Refactored: Main collection loop simplified
-    private static void CollectTypeStatistics(
-        MetadataReader metadataReader,
-        StatisticsCollector collector)
+    private static void CollectTypeStatistics(MetadataReader metadataReader, StatisticsCollector collector)
     {
+        // Iterate through all type definitions (classes, structs, interfaces, enums) in the assembly.
         foreach (var typeDefHandle in metadataReader.TypeDefinitions)
         {
             var typeDef = metadataReader.GetTypeDefinition(typeDefHandle);
@@ -69,32 +61,24 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
         }
     }
 
-    // Refactored: Type filtering logic separated
     private static bool ShouldSkipType(TypeDefinition typeDef)
     {
+        // Skip compiler-generated types (e.g., closures for lambdas) marked with SpecialName.
         return (typeDef.Attributes & TypeAttributes.SpecialName) != 0;
     }
 
-    // Refactored: Type processing logic separated
-    private static void ProcessType(
-        MetadataReader metadataReader,
-        TypeDefinition typeDef,
-        StatisticsCollector collector)
+    private static void ProcessType(MetadataReader metadataReader, TypeDefinition typeDef, StatisticsCollector collector)
     {
         CollectNamespace(metadataReader, typeDef, collector);
         ClassifyAndCountType(metadataReader, typeDef, collector);
         CountMethods(typeDef, collector);
     }
 
-    // Refactored: Namespace collection separated
-    private static void CollectNamespace(
-        MetadataReader metadataReader,
-        TypeDefinition typeDef,
-        StatisticsCollector collector)
+    private static void CollectNamespace(MetadataReader metadataReader, TypeDefinition typeDef, StatisticsCollector collector)
     {
-        if (typeDef.Namespace.IsNil)
-            return;
+        if (typeDef.Namespace.IsNil) return;
 
+        // Retrieve the string value of the namespace from the metadata heap.
         var ns = metadataReader.GetString(typeDef.Namespace);
 
         if (!string.IsNullOrEmpty(ns))
@@ -103,11 +87,7 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
         }
     }
 
-    // Refactored: Type classification logic separated and simplified
-    private static void ClassifyAndCountType(
-        MetadataReader metadataReader,
-        TypeDefinition typeDef,
-        StatisticsCollector collector)
+    private static void ClassifyAndCountType(MetadataReader metadataReader, TypeDefinition typeDef, StatisticsCollector collector)
     {
         var attrs = typeDef.Attributes;
 
@@ -117,9 +97,10 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
             return;
         }
 
-        if (!IsClass(attrs))
-            return;
+        // If it's not a class (e.g., delegate), skip it.
+        if (!IsClass(attrs)) return;
 
+        // In Metadata, structs are defined as sealed classes that inherit from System.ValueType.
         if (IsStruct(metadataReader, typeDef, attrs))
         {
             collector.IncrementStructs();
@@ -130,7 +111,6 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
         }
     }
 
-    // Refactored: Simple predicate methods
     private static bool IsInterface(TypeAttributes attrs)
     {
         return (attrs & TypeAttributes.Interface) != 0;
@@ -138,50 +118,45 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
 
     private static bool IsClass(TypeAttributes attrs)
     {
+        // Ensure it uses class semantics (not an interface).
         return (attrs & TypeAttributes.ClassSemanticsMask) == TypeAttributes.Class;
     }
 
-    private static bool IsStruct(
-        MetadataReader metadataReader,
-        TypeDefinition typeDef,
-        TypeAttributes attrs)
+    private static bool IsStruct(MetadataReader metadataReader, TypeDefinition typeDef, TypeAttributes attrs)
     {
+        // Structs must be sealed.
         var isSealed = (attrs & TypeAttributes.Sealed) != 0;
         return isSealed && IsValueType(metadataReader, typeDef);
     }
 
-    // Refactored: Method counting separated
     private static void CountMethods(TypeDefinition typeDef, StatisticsCollector collector)
     {
+        // Iterate over method handles belonging to this type.
         foreach (var _ in typeDef.GetMethods())
         {
             collector.IncrementMethods();
         }
     }
 
-    // Refactored: ValueType check simplified
     private static bool IsValueType(MetadataReader reader, TypeDefinition typeDef)
     {
-        if (typeDef.BaseType.IsNil)
-            return false;
-
-        if (typeDef.BaseType.Kind != HandleKind.TypeReference)
+        // Check if the base type exists and is a reference to another type (System.ValueType).
+        if (typeDef.BaseType.IsNil || typeDef.BaseType.Kind != HandleKind.TypeReference)
             return false;
 
         var typeRef = reader.GetTypeReference((TypeReferenceHandle)typeDef.BaseType);
         return IsSystemValueTypeOrEnum(reader, typeRef);
     }
 
-    // Refactored: Final check separated
     private static bool IsSystemValueTypeOrEnum(MetadataReader reader, TypeReference typeRef)
     {
         try
         {
+            // Resolve names from string heap to identify base type.
             var typeName = reader.GetString(typeRef.Name);
             var typeNamespace = reader.GetString(typeRef.Namespace);
 
-            return typeNamespace == "System" &&
-                   (typeName == "ValueType" || typeName == "Enum");
+            return typeNamespace == "System" && (typeName == "ValueType" || typeName == "Enum");
         }
         catch
         {
@@ -190,7 +165,6 @@ public class StatisticsAnalyzer : IStatisticsAnalyzer
     }
 }
 
-// Refactored: Statistics collection encapsulated in a separate class
 internal sealed class StatisticsCollector
 {
     private readonly HashSet<string> _uniqueNamespaces = new();
@@ -214,39 +188,3 @@ internal sealed class StatisticsCollector
         MethodCount = _methodCount
     };
 }
-
-/*public class StatisticsAnalyzer(IDecompilerFactory decompilerFactory) : IStatisticsAnalyzer
-{
-    private readonly IDecompilerFactory _decompilerFactory = decompilerFactory;
-
-    public Task<AssemblyStatisticsDto> GetAssemblyStatisticsAsync(string assemblyPath)
-    {
-        var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPath);
-        var mainModule = assemblyDefinition.MainModule;
-
-        var statistics = new AssemblyStatisticsDto
-        {
-            NamespaceCount = mainModule.Types.Select(t => t.Namespace).Distinct().Count(),
-            ClassCount = mainModule.Types.Count(t => t.IsClass && !t.IsInterface),
-            InterfaceCount = mainModule.Types.Count(t => t.IsInterface),
-            StructCount = mainModule.Types.Count(t => t.IsValueType && !t.IsPrimitive && !t.IsEnum),
-            MethodCount = mainModule.Types.SelectMany(t => t.Methods).Count(),
-
-            IlInstructionCount = mainModule.Types
-                .SelectMany(t => t.Methods)
-                .Where(m => m.HasBody)
-                .Sum(m => m.Body.Instructions.Count),
-
-            DecompiledLinesOfCode = CalculateDecompiledLinesOfCode(assemblyPath)
-        };
-        assemblyDefinition.Dispose();
-        return Task.FromResult(statistics);
-    }
-
-    private int CalculateDecompiledLinesOfCode(string assemblyPath)
-    {
-        var decompiler = _decompilerFactory.Create(assemblyPath);
-        var fullCode = decompiler.DecompileWholeModuleAsString();
-        return fullCode.Count(c => c == '\n') + 1;
-    }
-}*/
